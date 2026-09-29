@@ -21,7 +21,9 @@ Each trial starts with a fresh model and optimizer, using seed 1337. Batches
 contain uniform random byte token IDs. Each step creates a batch on the host,
 runs the GPT, computes cross entropy and gradients, clips gradients, updates
 weights with AdamW, and waits for device work to finish. Weights and optimizer
-state use float32. Execution is eager. Preset context and batch sizes apply.
+state use float32. The first source commit uses eager MLX execution. Later
+commits compile the full training step. The receipt records the execution mode.
+Preset context and batch sizes apply.
 
 Each trial warms up for 20 steps, then times 100 steps. We run three trials in
 sequence. Throughput is `batch * context * timed_steps / sum(step_seconds)`.
@@ -41,18 +43,21 @@ can exceed that value, as recorded in the medium-preset receipt.
 
 ## Reading the results
 
-The first report covers one Apple M4 Max with 36 GiB memory. GPU presets and the
-tiny CPU comparison ran sequentially on the same Mac. Power state, temperature,
-other apps, model settings, and software versions can change results. Use the
-trial range when judging small differences. This report measures training speed
-and allocation; task quality needs a suitable dataset and evaluation.
+The report tracks source commits on one Apple M4 Max with 36 GiB memory. GPU
+presets and the tiny CPU comparison ran sequentially on the same Mac. Each
+timeline point is a source commit and one measured preset/device pair. The
+same model settings, software stack, seed, and trial counts apply across the
+timeline. Power state, temperature, and other apps can change results. Use
+the trial range when judging small differences. The execution mode changes
+with the compiled training step. The demo learning receipt checks training
+quality on a separate text run.
 
 Each JSON receipt includes the source commit, source-file hash, software
 versions, model configuration, method, and every measured step. The site builder
 recalculates all displayed summaries and checks the stated trial settings.
-Published receipts use committed source. The first site compares a single
-machine and software stack. To contribute another machine, open a PR with the
-receipt and a separate clearly labeled report; the builder checks this boundary.
+Published receipts use committed source. The site compares a single machine
+and software stack. To contribute another machine, open a PR with the receipt
+and a separate clearly labeled report; the builder checks this boundary.
 
 ## Build the page
 

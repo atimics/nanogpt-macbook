@@ -2,7 +2,6 @@
 
 import gc
 import hashlib
-import math
 import platform
 import statistics
 import subprocess
@@ -134,7 +133,9 @@ def benchmark(
             )
             optimizer.init(model.trainable_parameters())
             mx.eval(model.parameters(), optimizer.state)
-            train_step = make_train_step(model, optimizer, training.accumulation, training.grad_clip)
+            train_step = make_train_step(
+                model, optimizer, training.accumulation, training.grad_clip
+            )
 
             for _ in range(warmup):
                 _step(train_step, rng, config, training)

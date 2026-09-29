@@ -42,8 +42,10 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
     BUILDER["build"](output)
     page = (output / "index.html").read_text()
     assert "{{" not in page
-    assert "128,865" in page
-    assert "18,765" in page
+    assert "128.9k" in page
+    assert "165.8k" in page
+    assert "be1802a" in page and "d1877d0" in page
+    assert "Training speed by commit" in page
     assert "5.52" in page and "2.17" in page
     links = []
     ids = set()
@@ -64,4 +66,27 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
             assert link[1:] in ids, link
         elif not link.startswith("https://"):
             assert (output / link).exists(), link
-    assert len(json.loads((output / "data/benchmarks.json").read_text())) == 2
+    assert len(json.loads((output / "data/benchmarks.json").read_text())) == 4
+
+
+def test_timeline_uses_distinct_commits_and_matching_workloads(tmp_path):
+    source = ROOT / "benchmarks/results"
+    target = tmp_path / "benchmarks/results"
+    target.mkdir(parents=True)
+    for file in source.glob("*.json"):
+        (target / file.name).write_bytes(file.read_bytes())
+    receipts, rows = BUILDER["load_results"](tmp_path)
+    assert len({r["source"]["commit"] for r in receipts}) == 2
+    assert len(rows) == 8
+
+    duplicate = json.loads((target / "m4-max-gpu.json").read_text())
+    (target / "duplicate.json").write_text(json.dumps(duplicate))
+    with pytest.raises(ValueError, match="one receipt per commit"):
+        BUILDER["load_results"](tmp_path)
+    (target / "duplicate.json").unlink()
+
+    changed = json.loads((target / "m4-max-gpu-d1877d0.json").read_text())
+    changed["results"][0]["train_config"]["batch_size"] += 1
+    (target / "m4-max-gpu-d1877d0.json").write_text(json.dumps(changed))
+    with pytest.raises(ValueError):
+        BUILDER["load_results"](tmp_path)

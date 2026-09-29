@@ -56,7 +56,11 @@ def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
     """Compile the full gradient and optimizer update for a fixed batch shape."""
     grad_fn = nn.value_and_grad(model, loss_fn)
 
-    @partial(mx.compile, inputs=[model.state, optimizer.state], outputs=[model.state, optimizer.state])
+    @partial(
+        mx.compile,
+        inputs=[model.state, optimizer.state],
+        outputs=[model.state, optimizer.state],
+    )
     def compiled_step(inputs, targets, rate):
         total_loss = None
         total_grads = None
@@ -138,7 +142,9 @@ def train(
             }
         state["data_path"] = str(dataset.path)
         checkpoint.write_json(run / "run.json", {**state, "target_steps": steps})
-        train_step = make_train_step(model, optimizer, train_config.accumulation, train_config.grad_clip)
+        train_step = make_train_step(
+            model, optimizer, train_config.accumulation, train_config.grad_clip
+        )
         report(
             f"{model.parameter_count:,} parameters | {mx.default_device()} | "
             f"{train_config.batch_size * train_config.accumulation * model_config.context:,} "
@@ -201,7 +207,9 @@ def train(
                     inputs.append(x)
                     targets.append(y)
                 rate = train_config.rate(state["step"])
-                last_loss = train_step(mx.array(np.stack(inputs)), mx.array(np.stack(targets)), rate)
+                last_loss = train_step(
+                    mx.array(np.stack(inputs)), mx.array(np.stack(targets)), rate
+                )
                 state["step"] += 1
                 interval_tokens += (
                     train_config.batch_size * train_config.accumulation * model_config.context
