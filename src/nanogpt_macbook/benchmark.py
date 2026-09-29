@@ -2,7 +2,6 @@
 
 import gc
 import hashlib
-import math
 import platform
 import statistics
 import subprocess
@@ -12,15 +11,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import mlx.core as mx
-import mlx.nn as nn
 import mlx.optimizers as optim
 import numpy as np
 
 from . import __version__
 from .checkpoint import write_json
 from .config import PRESETS
-from .engine import select_device
-from .model import GPT, loss_fn
+from .engine import make_train_step, select_device
+from .model import GPT
 
 
 def source_info() -> dict:
@@ -60,15 +58,9 @@ def summarize(trials: list[dict]) -> dict:
     }
 
 
-def _step(model, optimizer, grad_fn, rng, config, training):
+def _step(train_step, rng, config, training):
     block = rng.integers(0, 256, (training.batch_size, config.context + 1), dtype=np.int32)
-    loss, grads = grad_fn(model, mx.array(block[:, :-1]), mx.array(block[:, 1:]))
-    grads, norm = optim.clip_grad_norm(grads, training.grad_clip)
-    mx.eval(loss, grads, norm)
-    if not math.isfinite(loss.item()) or not math.isfinite(norm.item()):
-        raise ValueError("Benchmark loss or gradients became non-finite")
-    optimizer.update(model, grads)
-    mx.eval(model.parameters(), optimizer.state)
+    train_step(mx.array(block[None, :, :-1]), mx.array(block[None, :, 1:]), training.learning_rate)
 
 
 def benchmark(
@@ -110,7 +102,7 @@ def benchmark(
             "name": "training-step-v1",
             "data": "seeded uniform random UTF-8 byte token IDs (0 to 255)",
             "dtype": "float32",
-            "execution": "eager",
+            "execution": "compiled",
             "timed_work": "host batch creation, forward, loss, backward, clipping, AdamW, sync",
             "steps": steps,
             "warmup_steps": warmup,
@@ -141,16 +133,18 @@ def benchmark(
             )
             optimizer.init(model.trainable_parameters())
             mx.eval(model.parameters(), optimizer.state)
-            grad_fn = nn.value_and_grad(model, loss_fn)
+            train_step = make_train_step(
+                model, optimizer, training.accumulation, training.grad_clip
+            )
 
             for _ in range(warmup):
-                _step(model, optimizer, grad_fn, rng, config, training)
+                _step(train_step, rng, config, training)
             mx.synchronize()
             mx.reset_peak_memory()
             durations = []
             for _ in range(steps):
                 start = time.perf_counter()
-                _step(model, optimizer, grad_fn, rng, config, training)
+                _step(train_step, rng, config, training)
                 mx.synchronize()
                 durations.append(time.perf_counter() - start)
             elapsed = sum(durations)
@@ -168,7 +162,7 @@ def benchmark(
                 f"{preset:6} {selected} trial {repeat + 1}/{repeats}: "
                 f"{rate:,.0f} bytes/s | {trials[-1]['peak_memory_mib']:.1f} MiB"
             )
-            del grad_fn, optimizer, model
+            del train_step, optimizer, model
         receipt["results"].append(
             {
                 "preset": preset,

@@ -28,7 +28,10 @@ uv run nanogpt sample --run runs/first --prompt "Mira " --tokens 300
 ```
 
 The first setup downloads Python packages. The commands then run locally.
-The source and benchmark site are public under the MIT-0 license.
+The source and benchmark site are public under the MIT-0 license. The benchmark
+page plots training speed across measured source commits, with raw timing data
+for each point. The training loop compiles gradients, clipping, and AdamW into
+one MLX step for higher throughput.
 
 The demo contains a short original story. A short run should reduce the loss
 and start to learn letters and word patterns. Use a larger, varied corpus and

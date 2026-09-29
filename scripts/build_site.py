@@ -35,11 +35,9 @@ def validate(receipt: dict):
     if not re.fullmatch(r"[0-9a-f]{64}", source.get("python_source_sha256", "")):
         raise ValueError("Published results need a source hash")
     method = receipt["method"]
-    if (method["name"], method["dtype"], method["execution"]) != (
-        "training-step-v1",
-        "float32",
-        "eager",
-    ):
+    if (method["name"], method["dtype"]) != ("training-step-v1", "float32") or method[
+        "execution"
+    ] not in ("eager", "compiled"):
         raise ValueError("Use the documented float32 benchmark protocol")
     # The page states these counts. Require them before publishing a comparison.
     if (method["steps"], method["warmup_steps"], method["repeats"]) != (100, 20, 3):
@@ -98,11 +96,19 @@ def load_results(root: Path):
         validate(receipt)
         receipts.append({**receipt, "file": file.name})
         for result in receipt["results"]:
-            rows.append({**result, "environment": receipt["environment"], "file": file.name})
+            rows.append(
+                {
+                    **result,
+                    "environment": receipt["environment"],
+                    "source": receipt["source"],
+                    "recorded_at": receipt["recorded_at"],
+                    "execution": receipt["method"]["execution"],
+                    "file": file.name,
+                }
+            )
     if not receipts:
         raise ValueError("Add measured benchmark JSON files before building the site")
-    # This first report is a comparison on one machine and one software stack.
-    # A new machine can be added in a separate report with its own comparison.
+    # Compare source changes on one machine and one software stack.
     signatures = {
         (
             r["environment"]["chip"],
@@ -110,23 +116,98 @@ def load_results(root: Path):
             r["environment"]["mlx"],
             r["environment"]["python"],
             r["environment"]["os_version"],
-            r["source"]["python_source_sha256"],
             r["method"]["seed"],
         )
         for r in receipts
     }
     if len(signatures) != 1:
-        raise ValueError("This report compares one machine, software stack, and source version")
+        raise ValueError("This report compares one machine and software stack")
+    source_hashes = {}
+    for receipt in receipts:
+        commit = receipt["source"]["commit"]
+        digest = receipt["source"]["python_source_sha256"]
+        if commit in source_hashes and source_hashes[commit] != digest:
+            raise ValueError("One commit has conflicting source hashes")
+        source_hashes[commit] = digest
+    model_settings = {}
+    for row in rows:
+        identity = (row["preset"], row["environment"]["device"])
+        settings = (row["parameters"], row["model_config"], row["train_config"])
+        if identity in model_settings and model_settings[identity] != settings:
+            raise ValueError("A timeline series needs matching model and training settings")
+        model_settings[identity] = settings
     rows.sort(
         key=lambda row: (
+            row["recorded_at"],
             row["environment"]["device"] == "cpu",
             ("tiny", "small", "medium").index(row["preset"]),
         )
     )
-    identities = [(row["preset"], row["environment"]["device"]) for row in rows]
+    identities = [
+        (row["source"]["commit"], row["preset"], row["environment"]["device"]) for row in rows
+    ]
     if len(set(identities)) != len(identities):
-        raise ValueError("Keep one receipt per model and device in this report")
+        raise ValueError("Keep one receipt per commit, model, and device")
     return receipts, rows
+
+
+def timeline_cards(rows, commits):
+    cards = []
+    for preset, device in sorted(
+        {(r["preset"], r["environment"]["device"]) for r in rows},
+        key=lambda item: (item[1] == "cpu", ("tiny", "small", "medium").index(item[0])),
+    ):
+        series = sorted(
+            (r for r in rows if r["preset"] == preset and r["environment"]["device"] == device),
+            key=lambda row: commits.index(row["source"]["commit"]),
+        )
+        width = max(450, 100 * len(commits) + 80)
+        left, right = 55, width - 25
+        top, bottom = 30, 165
+        maximum = max(r["summary"]["median_bytes_per_second"] for r in series) * 1.2
+        positions = []
+        for row in series:
+            index = commits.index(row["source"]["commit"])
+            x = left + index * (right - left) / max(1, len(commits) - 1)
+            y = bottom - row["summary"]["median_bytes_per_second"] / maximum * (bottom - top)
+            positions.append((x, y))
+        chart = [
+            f'<svg viewBox="0 0 {width} 215" style="min-width:{width}px" role="img" '
+            f'aria-label="{preset} {device} '
+            f'throughput across {len(series)} measured commits">',
+            f'<path d="M{left} {bottom}H{right}" stroke="#ccd5c0"/>',
+            '<text x="8" y="21" font-size="10" fill="#5f6e64">BYTES / SECOND</text>',
+        ]
+        if len(positions) > 1:
+            path = " ".join(
+                f"{'M' if index == 0 else 'L'}{x:.1f} {y:.1f}"
+                for index, (x, y) in enumerate(positions)
+            )
+            chart.append(f'<path d="{path}" fill="none" stroke="#187556" stroke-width="3"/>')
+        for row, (x, y) in zip(series, positions, strict=True):
+            value = row["summary"]["median_bytes_per_second"]
+            sha = row["source"]["commit"]
+            chart.append(
+                f'<a href="{REPO}/commit/{sha}" aria-label="Commit {sha[:7]}: '
+                f'{value:,.0f} bytes per second">'
+                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" fill="#187556"/>'
+                f'<text x="{x:.1f}" y="{y - 11:.1f}" text-anchor="middle" '
+                f'font-size="10" fill="#172b27">{value / 1000:.1f}k</text>'
+                f'<text x="{x:.1f}" y="190" text-anchor="middle" '
+                f'font-size="11" fill="#187556">{sha[:7]}</text></a>'
+            )
+        chart.append("</svg>")
+        first = series[0]["summary"]["median_bytes_per_second"]
+        last = series[-1]["summary"]["median_bytes_per_second"]
+        change = (last / first - 1) * 100
+        change_text = f"{change:+.1f}% vs first commit" if len(series) > 1 else "First measurement"
+        label = "Metal GPU" if device == "gpu" else "CPU"
+        cards.append(
+            f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
+            f'<span>{change_text}</span></div><div class="timeline-plot">'
+            f"{''.join(chart)}</div></article>"
+        )
+    return "\n".join(cards)
 
 
 def bars(rows, memory=False):
@@ -159,11 +240,14 @@ def bars(rows, memory=False):
 
 def table(rows):
     parts = []
-    for row in rows:
+    for row in reversed(rows):
         summary, config, device = row["summary"], row["model_config"], row["environment"]["device"]
         label = "Metal" if device == "gpu" else "CPU"
+        sha = row["source"]["commit"]
         parts.append(
             f'<tr data-device="{device}"><td>{row["preset"]}<small>{label}</small></td>'
+            f'<td><a href="{REPO}/commit/{sha}">{sha[:7]}</a>'
+            f"<small>{row['execution']}</small></td>"
             f"<td>{row['parameters']:,}</td><td>{config['context']} × "
             f"{row['train_config']['batch_size']}</td>"
             f"<td>{summary['median_bytes_per_second']:,.0f}</td>"
@@ -213,9 +297,23 @@ def learning_chart(record):
 
 def build(output: Path, root: Path = ROOT):
     receipts, rows = load_results(root)
+    commits = sorted(
+        {r["source"]["commit"] for r in receipts},
+        key=lambda sha: min(r["recorded_at"] for r in receipts if r["source"]["commit"] == sha),
+    )
+    latest = {}
+    for row in rows:
+        latest[(row["preset"], row["environment"]["device"])] = row
+    current_rows = sorted(
+        latest.values(),
+        key=lambda row: (
+            row["environment"]["device"] == "cpu",
+            ("tiny", "small", "medium").index(row["preset"]),
+        ),
+    )
     learning = json.loads((root / "benchmarks/learning/demo.json").read_text())
     curve, losses = learning_chart(learning)
-    tiny = next(r for r in rows if r["preset"] == "tiny" and r["environment"]["device"] == "gpu")
+    tiny = latest[("tiny", "gpu")]
     env = tiny["environment"]
     summary = tiny["summary"]
     stats = [
@@ -233,7 +331,7 @@ def build(output: Path, root: Path = ROOT):
         ),
         (
             "Model sizes measured",
-            str(len({r["preset"] for r in rows})),
+            str(len({r["preset"] for r in current_rows})),
             "GPT presets",
             "0.84M → 14.46M parameters",
         ),
@@ -243,7 +341,6 @@ def build(output: Path, root: Path = ROOT):
         f'{value}<small>{unit}</small></div><div class="stat-note">{note}</div></div>'
         for label, value, unit, note in stats
     )
-    commits = sorted({r["source"]["commit"] for r in receipts})
     replacements = {
         "MACHINE": html.escape(
             f"{env['chip']} · {env['memory_gib']:g} GiB · "
@@ -251,11 +348,14 @@ def build(output: Path, root: Path = ROOT):
         ),
         "DATE": max(r["recorded_at"][:10] for r in receipts),
         "HIGHLIGHTS": highlights,
-        "SPEED_BARS": bars(rows),
-        "MEMORY_BARS": bars(rows, memory=True),
+        "TIMELINE_CARDS": timeline_cards(rows, commits),
+        "COMMIT_COUNT": str(len(commits)),
+        "LATEST_COMMIT": commits[-1][:7],
+        "SPEED_BARS": bars(current_rows),
+        "MEMORY_BARS": bars(current_rows, memory=True),
         "TABLE_ROWS": table(rows),
-        "ROW_COUNT": str(len(rows)),
-        "SCOPE_NOTE": "One M4 Max machine, measured on one date. Results vary with chip, "
+        "ROW_COUNT": str(len(current_rows)),
+        "SCOPE_NOTE": "One M4 Max machine across measured commits. Results vary with chip, "
         "model settings, power state, temperature, and other running apps.",
         "FIRST_LOSS": f"{losses[0]['val_loss']:.2f}",
         "LAST_LOSS": f"{losses[-1]['val_loss']:.2f}",
@@ -279,7 +379,7 @@ def build(output: Path, root: Path = ROOT):
         (output / "data" / receipt["file"]).write_text(json.dumps(receipt, indent=2) + "\n")
     (output / "data/benchmarks.json").write_text(json.dumps(receipts, indent=2) + "\n")
     (output / "data/demo-learning.json").write_text(json.dumps(learning, indent=2) + "\n")
-    print(f"Built {len(rows)} measured configurations into {output}")
+    print(f"Built {len(rows)} measured commit/configuration points into {output}")
 
 
 if __name__ == "__main__":
