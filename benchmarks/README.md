@@ -31,6 +31,11 @@ buffers can be reused. Earlier commits set the cache limit to 0.5 GiB. New
 receipts record the cache limit and attention path. Weights, optimizer math,
 model sizes, batch sizes, and the timed workload keep the same settings.
 
+Commit `f635c16` adds an explicit GELU derivative for float32 Metal training.
+Its forward activation matches MLX's approximate GELU. The derivative uses
+the stable cosh formula and compiles into fewer elementwise operations.
+CPU training uses MLX's native derivative. Receipts record the activation path.
+
 Each trial warms up for 20 steps, then times 100 steps. We run three trials in
 sequence. Throughput is `batch * context * timed_steps / sum(step_seconds)`.
 The site shows the median trial throughput and the minimum-to-maximum trial
@@ -61,8 +66,13 @@ quality on a separate text run.
 The `0eb0273` measurements are a fresh baseline taken before the `17cb28a`
 speed change. They ran in the same session with the same protocol. The Mac
 delivered higher throughput in this session than in the earlier recordings.
-Use these two latest commits to assess this change; the older points show the
+Use that pair to assess the attention change; the older points show the
 history of measurements under their recorded conditions.
+
+The `5802058` and `f635c16` measurements form the next comparison, for the GELU
+derivative. Both ran in one session using the same protocol. Small's GPU trial
+ranges are separated. Tiny and medium have overlapping ranges, so their median
+differences need care. Peak active memory fell for every GPU preset.
 
 Each JSON receipt includes the source commit, source-file hash, software
 versions, model configuration, method, and every measured step. The site builder

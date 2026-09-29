@@ -144,7 +144,9 @@ The GPT uses learned position embeddings, pre-layer normalization, causal
 attention, GELU feed-forward layers, and tied input/output embeddings. Weights
 and optimizer state use float32. Metal training uses fused kernels for the
 causal softmax and its gradient at context lengths up to 512. MLX handles the
-matrix operations, inference attention, and CPU training. AdamW, gradient
+matrix operations, inference attention, and CPU training. An explicit GELU
+derivative reduces temporary activation storage in compiled Metal training.
+AdamW, gradient
 clipping, and small defaults make local experiments
 easy to inspect. The source is split into model, data, checkpoint, training, and
 CLI modules under `src/nanogpt_macbook`.

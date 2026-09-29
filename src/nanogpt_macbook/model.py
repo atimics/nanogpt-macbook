@@ -6,6 +6,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
+from .activations import gelu_approx
 from .attention import training_attention
 from .config import ModelConfig
 
@@ -44,7 +45,7 @@ class Block(nn.Module):
 
     def __call__(self, x):
         x = x + self.attention(self.attention_norm(x))
-        return x + self.down(nn.gelu_approx(self.up(self.mlp_norm(x))))
+        return x + self.down(gelu_approx(self.up(self.mlp_norm(x))))
 
 
 class GPT(nn.Module):
