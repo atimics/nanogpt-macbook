@@ -6,6 +6,7 @@ import signal
 import threading
 import time
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
 
 import mlx.core as mx
@@ -49,6 +50,37 @@ def evaluate(model: GPT, dataset: Dataset, batch_size: int, batches: int = 10) -
     if not math.isfinite(loss):
         raise ValueError("Validation loss became non-finite; use a lower learning rate")
     return {"val_loss": loss, "bits_per_byte": loss / math.log(2)}
+
+
+def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
+    """Compile the full gradient and optimizer update for a fixed batch shape."""
+    grad_fn = nn.value_and_grad(model, loss_fn)
+
+    @partial(mx.compile, inputs=[model.state, optimizer.state], outputs=[model.state, optimizer.state])
+    def compiled_step(inputs, targets, rate):
+        total_loss = None
+        total_grads = None
+        for index in range(accumulation):
+            loss, grads = grad_fn(model, inputs[index], targets[index])
+            total_loss = loss if total_loss is None else total_loss + loss
+            total_grads = (
+                grads if total_grads is None else tree_map(lambda a, b: a + b, total_grads, grads)
+            )
+        grads = tree_map(lambda grad: grad / accumulation, total_grads)
+        grads, norm = optim.clip_grad_norm(grads, grad_clip)
+        optimizer.learning_rate = rate
+        optimizer.update(model, grads)
+        return total_loss / accumulation, norm
+
+    def step(inputs, targets, rate):
+        loss, norm = compiled_step(inputs, targets, mx.array(rate))
+        mx.eval(loss, norm, model.parameters(), optimizer.state)
+        loss_value, norm_value = loss.item(), norm.item()
+        if not math.isfinite(loss_value) or not math.isfinite(norm_value):
+            raise ValueError("Training became non-finite; resume with the last checkpoint")
+        return loss_value
+
+    return step
 
 
 def train(
@@ -106,7 +138,7 @@ def train(
             }
         state["data_path"] = str(dataset.path)
         checkpoint.write_json(run / "run.json", {**state, "target_steps": steps})
-        grad_fn = nn.value_and_grad(model, loss_fn)
+        train_step = make_train_step(model, optimizer, train_config.accumulation, train_config.grad_clip)
         report(
             f"{model.parameter_count:,} parameters | {mx.default_device()} | "
             f"{train_config.batch_size * train_config.accumulation * model_config.context:,} "
@@ -163,27 +195,13 @@ def train(
             while state["step"] < steps and not stop:
                 if time_limit is not None and time.monotonic() - started >= time_limit:
                     break
-                accumulated = None
-                losses = []
+                inputs, targets = [], []
                 for _ in range(train_config.accumulation):
                     x, y = dataset.batch("train", train_config.batch_size, rng)
-                    loss, grads = grad_fn(model, mx.array(x), mx.array(y))
-                    accumulated = (
-                        grads
-                        if accumulated is None
-                        else tree_map(lambda a, b: a + b, accumulated, grads)
-                    )
-                    mx.eval(loss, accumulated)
-                    losses.append(loss.item())
-                accumulated = tree_map(lambda g: g / train_config.accumulation, accumulated)
-                accumulated, norm = optim.clip_grad_norm(accumulated, train_config.grad_clip)
-                last_loss = sum(losses) / len(losses)
-                if not math.isfinite(last_loss) or not math.isfinite(norm.item()):
-                    raise ValueError("Training became non-finite; resume with the last checkpoint")
+                    inputs.append(x)
+                    targets.append(y)
                 rate = train_config.rate(state["step"])
-                optimizer.learning_rate = rate
-                optimizer.update(model, accumulated)
-                mx.eval(model.parameters(), optimizer.state)
+                last_loss = train_step(mx.array(np.stack(inputs)), mx.array(np.stack(targets)), rate)
                 state["step"] += 1
                 interval_tokens += (
                     train_config.batch_size * train_config.accumulation * model_config.context
