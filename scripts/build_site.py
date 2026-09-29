@@ -161,9 +161,7 @@ def timeline_cards(rows, commits):
             (r for r in rows if r["preset"] == preset and r["environment"]["device"] == device),
             key=lambda row: commits.index(row["source"]["commit"]),
         )
-        width = max(300, 100 * len(commits) + 80)
-        min_width = max(240, 100 * len(commits) + 40)
-        left, right = 45, width - 40
+        left, right = 9, 91
         top, bottom = 30, 165
         maximum = max(r["summary"]["median_bytes_per_second"] for r in series) * 1.2
         positions = []
@@ -173,40 +171,46 @@ def timeline_cards(rows, commits):
             y = bottom - row["summary"]["median_bytes_per_second"] / maximum * (bottom - top)
             positions.append((x, y))
         chart = [
-            f'<svg viewBox="0 0 {width} 215" style="min-width:{min_width}px" role="img" '
+            '<svg width="100%" height="215" role="img" '
             f'aria-label="{preset} {device} '
             f'throughput across {len(series)} measured commits">',
-            f'<path d="M{left} {bottom}H{right}" stroke="#ccd5c0"/>',
+            f'<line x1="{left}%" y1="{bottom}" x2="{right}%" y2="{bottom}" stroke="#ccd5c0"/>',
             '<text x="8" y="21" font-size="10" fill="#5f6e64">BYTES / SECOND</text>',
         ]
         if len(positions) > 1:
-            path = " ".join(
-                f"{'M' if index == 0 else 'L'}{x:.1f} {y:.1f}"
-                for index, (x, y) in enumerate(positions)
-            )
-            chart.append(f'<path d="{path}" fill="none" stroke="#187556" stroke-width="3"/>')
-        for row, (x, y) in zip(series, positions, strict=True):
+            for (x1, y1), (x2, y2) in zip(positions[:-1], positions[1:], strict=True):
+                chart.append(
+                    f'<line x1="{x1:.2f}%" y1="{y1:.1f}" x2="{x2:.2f}%" y2="{y2:.1f}" '
+                    'stroke="#187556" stroke-width="3"/>'
+                )
+        for index, (row, (x, y)) in enumerate(zip(series, positions, strict=True)):
             value = row["summary"]["median_bytes_per_second"]
             sha = row["source"]["commit"]
             chart.append(
-                f'<a href="{REPO}/commit/{sha}" aria-label="Commit {sha[:7]}: '
+                f'<a href="{REPO}/commit/{sha}" data-position="{x:.2f}" '
+                f'data-label="{str(index in (0, len(series) - 1)).lower()}" '
+                f'aria-label="Commit {sha[:7]}: '
                 f'{value:,.0f} bytes per second">'
-                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" fill="#187556"/>'
-                f'<text x="{x:.1f}" y="{y - 11:.1f}" text-anchor="middle" '
+                f"<title>{sha[:7]}: {value:,.0f} bytes per second</title>"
+                f'<circle cx="{x:.2f}%" cy="{y:.1f}" r="5" fill="#187556"/>'
+                f'<text class="timeline-label" x="{x:.2f}%" y="{y - 11:.1f}" '
+                'text-anchor="middle" '
                 f'font-size="10" fill="#172b27">{value / 1000:.1f}k</text>'
-                f'<text x="{x:.1f}" y="190" text-anchor="middle" '
-                f'font-size="11" fill="#187556">{sha[:7]}</text></a>'
+                f'<text class="timeline-label" x="{x:.2f}%" y="190" text-anchor="middle" '
+                f'font-size="10" fill="#187556">{sha[:7]}</text></a>'
             )
         chart.append("</svg>")
         previous = series[-2 if len(series) > 1 else 0]["summary"]["median_bytes_per_second"]
         last = series[-1]["summary"]["median_bytes_per_second"]
+        baseline = series[0]["summary"]["median_bytes_per_second"]
+        baseline_change = (last / baseline - 1) * 100
         change = (last / previous - 1) * 100
         change_text = f"{change:+.1f}% vs previous" if len(series) > 1 else "First measurement"
         label = "Metal GPU" if device == "gpu" else "CPU"
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
-            f'<span>{change_text}</span></div><div class="timeline-plot" tabindex="0" '
-            f'role="region" aria-label="{preset} {label} commit history">'
+            f'<div class="timeline-changes"><span>{baseline_change:+.1f}% vs baseline</span>'
+            f'<span>{change_text}</span></div></div><div class="timeline-plot">'
             f"{''.join(chart)}</div></article>"
         )
     return "\n".join(cards)
