@@ -5,14 +5,21 @@ function fitTimelineLabels(plot) {
   if (points.length < 2) return;
   const width = plot.clientWidth;
   const last = points[points.length - 1];
-  let previousPosition = -Infinity;
-  points.forEach((point, index) => {
+  // Read the rendered labels so browser zoom and font changes also fit.
+  const bounds = point => {
     const position = Number(point.dataset.position) * width / 100;
-    const lastPosition = Number(last.dataset.position) * width / 100;
+    const labelWidth = Math.max(...[...point.querySelectorAll('text')].map(text => text.getBBox().width));
+    const start = point === points[0] ? position : point === last ? position - labelWidth : position - labelWidth / 2;
+    return {start, end: start + labelWidth};
+  };
+  const lastBounds = bounds(last);
+  let previousEnd = -Infinity;
+  points.forEach((point, index) => {
+    const {start, end} = bounds(point);
     const show = index === 0 || point === last ||
-      (position - previousPosition >= 58 && lastPosition - position >= 58);
+      (start - previousEnd >= 12 && lastBounds.start - end >= 12);
     point.dataset.label = String(show);
-    if (show) previousPosition = position;
+    if (show) previousEnd = end;
   });
 }
 const timelineObserver = new ResizeObserver(entries => {

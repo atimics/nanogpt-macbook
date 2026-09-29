@@ -1,6 +1,8 @@
 import copy
 import json
+import re
 import runpy
+import shutil
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -95,3 +97,26 @@ def test_timeline_uses_distinct_commits_and_matching_workloads(tmp_path):
     (target / "second.json").write_text(json.dumps(second))
     with pytest.raises(ValueError, match="matching model and training settings"):
         BUILDER["load_results"](tmp_path)
+
+
+def test_asset_urls_change_with_content_for_returning_visitors(tmp_path):
+    root = tmp_path / "source"
+    for name in ("site", "benchmarks"):
+        shutil.copytree(ROOT / name, root / name)
+
+    def asset_links(output):
+        BUILDER["build"](output, root)
+        page = (output / "index.html").read_text()
+        return set(re.findall(r'(?:src|href)="\./([^"/]+\.(?:css|js|svg))"', page))
+
+    first = asset_links(tmp_path / "first")
+    assert len(first) == 3
+    assert asset_links(tmp_path / "repeat") == first
+    for name in ("style.css", "app.js"):
+        source = root / "site" / name
+        source.write_text(source.read_text() + "\n/* New layout */\n")
+    second = asset_links(tmp_path / "second")
+    assert len(first & second) == 1  # The unchanged favicon keeps its URL.
+    for name in second:
+        original = name.split(".")[0] + "." + name.split(".")[-1]
+        assert (tmp_path / "second" / name).read_bytes() == (root / "site" / original).read_bytes()
