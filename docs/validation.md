@@ -73,3 +73,32 @@ Linux CI runs the CPU checks and skips the Metal checks.
 The updated tiny model also completed 300 steps on the bundled story. Validation
 loss fell from 5.5229 to 2.1712. Its [learning receipt](../benchmarks/learning/demo-17cb28a.json)
 records each reported training and validation point.
+
+## GELU gradient update, 29 September 2026
+
+Source commit `f635c16` uses an explicit stable GELU derivative on Metal.
+The reference forward activation, float32 settings, optimizer, and benchmark
+protocol remain the same. The CPU uses MLX's native derivative. A fresh
+baseline at `5802058` and the updated source ran in the same session.
+
+| Preset / device | Baseline bytes/s | Updated bytes/s | Median change | Peak memory before / after |
+| --- | ---: | ---: | ---: | ---: |
+| tiny / Metal | 316,312 | 319,800 | +1.1% | 167.4 / 149.4 MiB |
+| small / Metal | 127,417 | 134,523 | +5.6% | 1113.0 / 1033.1 MiB |
+| medium / Metal | 46,068 | 48,703 | +5.7% | 2054.5 / 2033.1 MiB |
+| tiny / CPU | 23,700 | 23,617 | -0.4% | 109.3 / 109.3 MiB |
+
+Small's GPU trial ranges are separated. Tiny and medium have overlapping
+ranges. Timing varies with other apps and machine state. All raw timings and
+source hashes are published in `benchmarks/results/`. The largest active-memory
+reduction is 10.8%, for tiny on Metal.
+
+All 63 local tests pass. The added checks compare compiled and eager gradients
+with MLX on CPU and GPU, check strided batches, compare the derivative with
+float64 finite differences, cover saturated values, and compare every gradient
+in a two-layer GPT. The suite also checks checkpoint resume with accumulation.
+Ruff lint and formatting pass.
+
+The 300-step story run reached validation loss 2.1712, matching the previous
+result to four decimal places. Its [learning receipt](../benchmarks/learning/demo-f635c16.json)
+records the source hash and reported metrics.

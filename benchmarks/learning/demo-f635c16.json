@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "source_commit": "f635c165451aca9af685f82f32f6b5d44603e680",
+  "recorded_at": "2026-09-29",
+  "chip": "Apple M4 Max",
+  "device": "gpu",
+  "preset": "tiny",
+  "dtype": "float32",
+  "dataset": {
+    "format": 1,
+    "tokenizer": "utf8-bytes-v1",
+    "source_name": "demo.txt",
+    "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+    "vocab_size": 256,
+    "train_tokens": 4089,
+    "val_tokens": 455,
+    "train_sha256": "5469cfe0d6c1f14f392df065dd08b0b0b91cd5ab7d770606d66b318684971595",
+    "val_sha256": "b6951b5b775173a1739be89e09e0226182075ee3a51d82b15d2d2a6acec6e42d"
+  },
+  "command": "uv run nanogpt train --data data/demo --run runs/gelu-metal --steps 300 --eval-every 100 --eval-batches 10 --log-every 100 --device gpu",
+  "metrics": [
+    {
+      "step": 0,
+      "val_loss": 5.5228660106658936,
+      "bits_per_byte": 7.967811405081898
+    },
+    {
+      "step": 100,
+      "train_loss": 2.36753249168396,
+      "learning_rate": 0.0005978816943937696,
+      "bytes_per_second": 257631.15419644138,
+      "peak_memory_mib": 149.39336776733398
+    },
+    {
+      "step": 100,
+      "val_loss": 2.363024616241455,
+      "bits_per_byte": 3.4091238953500933
+    },
+    {
+      "step": 200,
+      "train_loss": 2.1790943145751953,
+      "learning_rate": 0.0005891834706748625,
+      "bytes_per_second": 320573.1909840144,
+      "peak_memory_mib": 149.39336776733398
+    },
+    {
+      "step": 200,
+      "val_loss": 2.216512417793274,
+      "bits_per_byte": 3.1977514732191628
+    },
+    {
+      "step": 300,
+      "train_loss": 1.9994736909866333,
+      "learning_rate": 0.0005739739820991847,
+      "bytes_per_second": 318588.37956987723,
+      "peak_memory_mib": 149.39336776733398
+    },
+    {
+      "step": 300,
+      "val_loss": 2.1712108850479126,
+      "bits_per_byte": 3.1323951765827607
+    }
+  ],
+  "python_source_sha256": "9dc22f93752a0a57139ddd8cfb56870d517ada10a01b5281138eb9256b2faea4"
+}
