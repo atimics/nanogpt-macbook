@@ -46,6 +46,7 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
     assert "165.8k" in page
     assert "be1802a" in page and "d1877d0" in page
     assert "Training speed by commit" in page
+    assert 'viewBox="0 0 300 215" style="min-width:240px"' in page
     assert "5.52" in page and "2.17" in page
     links = []
     ids = set()

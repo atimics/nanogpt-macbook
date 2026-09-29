@@ -161,8 +161,9 @@ def timeline_cards(rows, commits):
             (r for r in rows if r["preset"] == preset and r["environment"]["device"] == device),
             key=lambda row: commits.index(row["source"]["commit"]),
         )
-        width = max(450, 100 * len(commits) + 80)
-        left, right = 55, width - 25
+        width = max(300, 100 * len(commits) + 80)
+        min_width = max(240, 100 * len(commits) + 40)
+        left, right = 45, width - 40
         top, bottom = 30, 165
         maximum = max(r["summary"]["median_bytes_per_second"] for r in series) * 1.2
         positions = []
@@ -172,7 +173,7 @@ def timeline_cards(rows, commits):
             y = bottom - row["summary"]["median_bytes_per_second"] / maximum * (bottom - top)
             positions.append((x, y))
         chart = [
-            f'<svg viewBox="0 0 {width} 215" style="min-width:{width}px" role="img" '
+            f'<svg viewBox="0 0 {width} 215" style="min-width:{min_width}px" role="img" '
             f'aria-label="{preset} {device} '
             f'throughput across {len(series)} measured commits">',
             f'<path d="M{left} {bottom}H{right}" stroke="#ccd5c0"/>',
