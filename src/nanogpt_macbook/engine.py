@@ -31,7 +31,7 @@ def select_device(device: str = "auto", memory_gb: float = 2.0) -> str:
     mx.set_default_device(mx.gpu if selected == "gpu" else mx.cpu)
     if selected == "gpu":
         mx.set_memory_limit(int(memory_gb * 1024**3))
-        mx.set_cache_limit(int(memory_gb * 1024**3 / 4))
+        mx.set_cache_limit(int(memory_gb * 1024**3))
     return selected
 
 
@@ -54,12 +54,13 @@ def evaluate(model: GPT, dataset: Dataset, batch_size: int, batches: int = 10) -
 
 def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
     """Compile the full gradient and optimizer update for a fixed batch shape."""
+    state = [model.state, optimizer.state]
     grad_fn = nn.value_and_grad(model, loss_fn)
 
     @partial(
         mx.compile,
-        inputs=[model.state, optimizer.state],
-        outputs=[model.state, optimizer.state],
+        inputs=state,
+        outputs=state,
     )
     def compiled_step(inputs, targets, rate):
         total_loss = None
@@ -78,7 +79,7 @@ def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
 
     def step(inputs, targets, rate):
         loss, norm = compiled_step(inputs, targets, mx.array(rate))
-        mx.eval(loss, norm, model.parameters(), optimizer.state)
+        mx.eval(loss, norm, state)
         loss_value, norm_value = loss.item(), norm.item()
         if not math.isfinite(loss_value) or not math.isfinite(norm_value):
             raise ValueError("Training became non-finite; resume with the last checkpoint")

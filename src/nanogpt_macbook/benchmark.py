@@ -109,6 +109,8 @@ def benchmark(
             "repeats": repeats,
             "seed": seed,
             "memory_limit_gib": memory_gb if selected == "gpu" else None,
+            "cache_limit_gib": memory_gb if selected == "gpu" else None,
+            "attention": "fused causal softmax on Metal; MLX attention on CPU",
             "memory_scope": "peak active MLX allocation during measured steps, including weights",
             "summary": "median of per-trial throughput; range is minimum to maximum trial",
         },
