@@ -7,3 +7,4 @@ dist/
 data/
 runs/
 .DS_Store
+_site/
