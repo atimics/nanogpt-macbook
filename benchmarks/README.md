@@ -25,6 +25,12 @@ state use float32. The first source commit uses eager MLX execution. Later
 commits compile the full training step. The receipt records the execution mode.
 Preset context and batch sizes apply.
 
+Commit `17cb28a` adds fused Metal kernels for the attention softmax and its
+gradient. Its cache limit is 2 GiB, matching the allocator setting, so temporary
+buffers can be reused. Earlier commits set the cache limit to 0.5 GiB. New
+receipts record the cache limit and attention path. Weights, optimizer math,
+model sizes, batch sizes, and the timed workload keep the same settings.
+
 Each trial warms up for 20 steps, then times 100 steps. We run three trials in
 sequence. Throughput is `batch * context * timed_steps / sum(step_seconds)`.
 The site shows the median trial throughput and the minimum-to-maximum trial
@@ -51,6 +57,12 @@ timeline. Power state, temperature, and other apps can change results. Use
 the trial range when judging small differences. The execution mode changes
 with the compiled training step. The demo learning receipt checks training
 quality on a separate text run.
+
+The `0eb0273` measurements are a fresh baseline taken before the `17cb28a`
+speed change. They ran in the same session with the same protocol. The Mac
+delivered higher throughput in this session than in the earlier recordings.
+Use these two latest commits to assess this change; the older points show the
+history of measurements under their recorded conditions.
 
 Each JSON receipt includes the source commit, source-file hash, software
 versions, model configuration, method, and every measured step. The site builder

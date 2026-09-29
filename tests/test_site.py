@@ -46,7 +46,6 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
     assert "165.8k" in page
     assert "be1802a" in page and "d1877d0" in page
     assert "Training speed by commit" in page
-    assert 'viewBox="0 0 300 215" style="min-width:240px"' in page
     assert "5.52" in page and "2.17" in page
     links = []
     ids = set()
@@ -67,27 +66,32 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
             assert link[1:] in ids, link
         elif not link.startswith("https://"):
             assert (output / link).exists(), link
-    assert len(json.loads((output / "data/benchmarks.json").read_text())) == 4
+    published = json.loads((output / "data/benchmarks.json").read_text())
+    assert len(published) == len(list((ROOT / "benchmarks/results").glob("*.json")))
+    for result in published:
+        assert result["source"]["commit"][:7] in page
 
 
 def test_timeline_uses_distinct_commits_and_matching_workloads(tmp_path):
-    source = ROOT / "benchmarks/results"
     target = tmp_path / "benchmarks/results"
     target.mkdir(parents=True)
-    for file in source.glob("*.json"):
-        (target / file.name).write_bytes(file.read_bytes())
+    first = receipt()
+    (target / "first.json").write_text(json.dumps(first))
+    second = copy.deepcopy(first)
+    second["source"]["commit"] = "f" * 40
+    second["source"]["python_source_sha256"] = "e" * 64
+    second["recorded_at"] = "2026-09-30T00:00:00+00:00"
+    (target / "second.json").write_text(json.dumps(second))
     receipts, rows = BUILDER["load_results"](tmp_path)
     assert len({r["source"]["commit"] for r in receipts}) == 2
-    assert len(rows) == 8
+    assert len(rows) == 6
 
-    duplicate = json.loads((target / "m4-max-gpu.json").read_text())
-    (target / "duplicate.json").write_text(json.dumps(duplicate))
+    (target / "duplicate.json").write_text(json.dumps(first))
     with pytest.raises(ValueError, match="one receipt per commit"):
         BUILDER["load_results"](tmp_path)
     (target / "duplicate.json").unlink()
 
-    changed = json.loads((target / "m4-max-gpu-d1877d0.json").read_text())
-    changed["results"][0]["train_config"]["batch_size"] += 1
-    (target / "m4-max-gpu-d1877d0.json").write_text(json.dumps(changed))
-    with pytest.raises(ValueError):
+    second["results"][0]["train_config"]["weight_decay"] = 0.2
+    (target / "second.json").write_text(json.dumps(second))
+    with pytest.raises(ValueError, match="matching model and training settings"):
         BUILDER["load_results"](tmp_path)

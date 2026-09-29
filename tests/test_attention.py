@@ -19,7 +19,9 @@ def reference(q, k, v):
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
-@pytest.mark.parametrize("length,width", [(5, 8), (33, 16), (128, 32), (256, 32), (512, 48)])
+@pytest.mark.parametrize(
+    "length,width", [(1, 8), (5, 8), (33, 16), (128, 32), (256, 32), (512, 48), (513, 16)]
+)
 def test_attention_values_and_gradients_match_mlx(device, length, width):
     use_device(device)
     # Slices also cover strided input arrays and rows beyond a 32-lane boundary.
@@ -58,6 +60,15 @@ def test_metal_attention_respects_the_causal_boundary():
     )(k, v)
     for grad in grads:
         np.testing.assert_array_equal(np.array(grad[:, :, 17:]), 0)
+
+
+def test_metal_softmax_is_stable_for_large_scores():
+    use_device("gpu")
+    q = mx.full((1, 1, 33, 16), 100.0)
+    k = mx.full((1, 1, 33, 16), 100.0)
+    v = mx.random.normal((1, 1, 33, 16))
+    expected = mx.cumsum(v, axis=2) / mx.arange(1, 34)[None, None, :, None]
+    np.testing.assert_allclose(np.array(training_attention(q, k, v)), np.array(expected), atol=1e-6)
 
 
 def test_metal_training_resume_with_accumulation(corpus, tmp_path):

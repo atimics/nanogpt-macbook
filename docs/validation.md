@@ -45,3 +45,31 @@ the MLX CPU backend. The PR check records the result for each commit.
 
 The source distribution and wheel build successfully. The wheel was installed
 in a fresh environment; its command entry point and bundled demo both work.
+
+## Metal speed update, 29 September 2026
+
+Source commit `17cb28a` uses fused causal softmax kernels and a 2 GiB buffer
+cache. A fresh baseline at `0eb0273` used the same Mac, dependencies, float32
+models, batch sizes, 20 warmup steps, and three trials of 100 timed steps.
+
+| Preset / device | Baseline bytes/s | Updated bytes/s | Median change |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 308,716 | 301,597 | -2.3% |
+| small / Metal | 111,185 | 122,751 | +10.4% |
+| medium / Metal | 41,609 | 45,797 | +10.1% |
+| tiny / CPU | 23,737 | 23,292 | -1.9% |
+
+The small and medium trial ranges are separated from their baseline ranges.
+Tiny's ranges overlap. Thermal state and other apps affect timing. The earlier
+recordings had lower throughput, so this table uses the fresh baseline to
+measure the code change. Every trial is in [`benchmarks/results`](../benchmarks/results/).
+
+All 55 local tests pass with `PYTHONPATH=src`, including CPU coverage, Metal
+output and gradient comparisons, odd sequence lengths, the causal boundary,
+large attention scores, and GPU resume with gradient accumulation. Ruff,
+format checks, the static page build, the wheel, and the source archive pass.
+Linux CI runs the CPU checks and skips the Metal checks.
+
+The updated tiny model also completed 300 steps on the bundled story. Validation
+loss fell from 5.5229 to 2.1712. Its [learning receipt](../benchmarks/learning/demo-17cb28a.json)
+records each reported training and validation point.

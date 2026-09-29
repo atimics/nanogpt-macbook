@@ -198,14 +198,15 @@ def timeline_cards(rows, commits):
                 f'font-size="11" fill="#187556">{sha[:7]}</text></a>'
             )
         chart.append("</svg>")
-        first = series[0]["summary"]["median_bytes_per_second"]
+        previous = series[-2 if len(series) > 1 else 0]["summary"]["median_bytes_per_second"]
         last = series[-1]["summary"]["median_bytes_per_second"]
-        change = (last / first - 1) * 100
-        change_text = f"{change:+.1f}% vs first commit" if len(series) > 1 else "First measurement"
+        change = (last / previous - 1) * 100
+        change_text = f"{change:+.1f}% vs previous" if len(series) > 1 else "First measurement"
         label = "Metal GPU" if device == "gpu" else "CPU"
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
-            f'<span>{change_text}</span></div><div class="timeline-plot">'
+            f'<span>{change_text}</span></div><div class="timeline-plot" tabindex="0" '
+            f'role="region" aria-label="{preset} {label} commit history">'
             f"{''.join(chart)}</div></article>"
         )
     return "\n".join(cards)

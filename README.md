@@ -74,7 +74,8 @@ uv run nanogpt presets
 | medium | 14,463,744 | 8 | 384 | 512 | 4 |
 
 Start with `tiny`. Watch the reported peak MLX memory before increasing the size.
-The default GPU memory limit is 2 GiB. MLX's cache limit is one quarter of that.
+The default GPU memory limit is 2 GiB. MLX's cache limit uses the same setting
+so training can reuse temporary buffers across steps.
 Use `--memory-gb 4` for a larger budget. Python, data mappings, macOS, and other
 apps use additional memory. MLX limits apply to the MLX allocator.
 
@@ -141,8 +142,10 @@ includes work between log points, including validation and saves.
 
 The GPT uses learned position embeddings, pre-layer normalization, causal
 attention, GELU feed-forward layers, and tied input/output embeddings. Weights
-and optimizer state use float32. MLX supplies fused causal attention and automatic
-gradients. AdamW, gradient clipping, and small defaults make local experiments
+and optimizer state use float32. Metal training uses fused kernels for the
+causal softmax and its gradient at context lengths up to 512. MLX handles the
+matrix operations, inference attention, and CPU training. AdamW, gradient
+clipping, and small defaults make local experiments
 easy to inspect. The source is split into model, data, checkpoint, training, and
 CLI modules under `src/nanogpt_macbook`.
 
@@ -168,7 +171,9 @@ uv run python -m build
 ```
 
 The tests cover causal attention, learning, batch accumulation, checkpoint resume,
-data integrity, sampling, and CLI workflows. CI uses the MLX CPU package on Linux.
+data integrity, sampling, and CLI workflows. On Apple Silicon, they also compare
+the Metal attention outputs and gradients with MLX and check GPU checkpoint resume.
+CI uses the MLX CPU package on Linux.
 Local Metal validation is recorded in
 [`docs/validation.md`](docs/validation.md).
 
