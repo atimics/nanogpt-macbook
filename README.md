@@ -4,6 +4,9 @@ Train a small GPT from scratch on an Apple Silicon MacBook. This kit uses
 [Apple MLX](https://github.com/ml-explore/mlx) for Metal GPU training and offers
 a simple command line for text import, training, resume, and text generation.
 
+[Benchmarks](https://atimics.github.io/nanogpt-macbook/) ·
+[Raw measurements](benchmarks/results/) · [MIT-0 license](LICENSE)
+
 Inspired by [Andrej Karpathy's nanoGPT](https://github.com/karpathy/nanoGPT).
 The model and training code here are written for MLX. Models learn to continue
 text from your own corpus. The bundled story provides a quick first experiment.
@@ -25,7 +28,7 @@ uv run nanogpt sample --run runs/first --prompt "Mira " --tokens 300
 ```
 
 The first setup downloads Python packages. The commands then run locally.
-The repo is private; cloning uses your GitHub access.
+The source and benchmark site are public under the MIT-0 license.
 
 The demo contains a short original story. A short run should reduce the loss
 and start to learn letters and word patterns. Use a larger, varied corpus and
@@ -139,6 +142,17 @@ and optimizer state use float32. MLX supplies fused causal attention and automat
 gradients. AdamW, gradient clipping, and small defaults make local experiments
 easy to inspect. The source is split into model, data, checkpoint, training, and
 CLI modules under `src/nanogpt_macbook`.
+
+## Measure your Mac
+
+```bash
+uv run nanogpt benchmark --preset all --device gpu \
+  --steps 100 --warmup 20 --repeats 3 --out benchmarks/results/my-mac-gpu.json
+```
+
+The command records raw step timings, speed, memory, hardware, software versions,
+and the source commit. See the [benchmark protocol](benchmarks/README.md) for
+the measurement scope and the CPU comparison command.
 
 ## Development
 
