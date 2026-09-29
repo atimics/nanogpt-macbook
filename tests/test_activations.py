@@ -56,6 +56,7 @@ def test_full_model_gradients_match_mlx_activation(device, monkeypatch):
     model = GPT(ModelConfig(context=33, layers=2, heads=2, width=32))
     tokens = mx.random.randint(0, 256, (3, 34))
     inputs, targets = tokens[:, :-1], tokens[:, 1:]
+
     def gradients():
         grad_fn = nn.value_and_grad(model, lambda x, y: loss_fn(model, x, y))
         return mx.compile(grad_fn, inputs=model.state, outputs=model.state)(inputs, targets)
