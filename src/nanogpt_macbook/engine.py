@@ -196,13 +196,13 @@ def train(
                         "train_loss": last_loss,
                         "learning_rate": rate,
                         "bytes_per_second": tokens_per_second,
-                        "peak_memory_mb": mx.get_peak_memory() / 1024**2,
+                        "peak_memory_mib": mx.get_peak_memory() / 1024**2,
                     }
                     with metrics_path.open("a") as stream:
                         stream.write(json.dumps(row, allow_nan=False) + "\n")
                     report(
                         f"step {state['step']:>6} | train {last_loss:.4f} | "
-                        f"{tokens_per_second:,.0f} bytes/s | {row['peak_memory_mb']:.0f} MB"
+                        f"{tokens_per_second:,.0f} bytes/s | {row['peak_memory_mib']:.0f} MiB"
                     )
                     interval_tokens = 0
                     last_log = now

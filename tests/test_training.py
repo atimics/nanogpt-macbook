@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 
 import mlx.core as mx
+import mlx.optimizers as optim
 import numpy as np
 import pytest
 from mlx.utils import tree_flatten
@@ -68,6 +69,26 @@ def test_resume_matches_uninterrupted_training(corpus, tmp_path):
     for key, value in mx.load(str(full_path / "optimizer.safetensors")).items():
         restored = mx.load(str(split_path / "optimizer.safetensors"))[key]
         np.testing.assert_allclose(np.array(value), np.array(restored), atol=1e-7)
+
+
+def test_checkpoint_restores_the_next_random_draw(tmp_path):
+    run = tmp_path / "random-state"
+    run.mkdir()
+    model = GPT(MODEL)
+    optimizer = optim.AdamW(learning_rate=0.01)
+    optimizer.init(model.trainable_parameters())
+    mx.eval(model.parameters(), optimizer.state)
+    rng = np.random.default_rng(67)
+    mx.eval(mx.random.normal((13,)))
+    checkpoint.save(run, model, optimizer, {"format": 1, "step": 0}, rng, True)
+    expected_mlx = np.array(mx.random.normal((8,)))
+    expected_numpy = rng.integers(0, 1000, size=8)
+    mx.random.seed(987654321)
+    rng = np.random.default_rng(987654321)
+    path, state = checkpoint.read(run)
+    checkpoint.restore(path, model, optimizer, rng, state)
+    np.testing.assert_array_equal(np.array(mx.random.normal((8,))), expected_mlx)
+    np.testing.assert_array_equal(rng.integers(0, 1000, size=8), expected_numpy)
 
 
 def test_accumulation_matches_a_larger_batch(corpus, tmp_path):

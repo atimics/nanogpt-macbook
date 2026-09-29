@@ -29,11 +29,12 @@ small validation sample. Text quality needs further training and broader data.
 
 ## Automated checks
 
-The initial suite passed all 25 tests using MLX on the CPU. It covers:
+The suite passed all 26 tests using MLX on the CPU. It covers:
 
 - Causal attention: future input tokens preserve earlier logits.
 - Learning: training reduces held-out loss on a repeatable text fixture.
 - Resume: interrupted and continuous runs agree on model and optimizer state.
+- Random state: checkpoint restore reproduces the next MLX and NumPy draws.
 - Gradient accumulation: small batches agree with one larger batch.
 - Data: UTF-8 round trips, split boundaries, shifted targets, and hash checks.
 - Recovery: run locks, failed checkpoint writes, time limits, and Ctrl+C.
@@ -41,3 +42,6 @@ The initial suite passed all 25 tests using MLX on the CPU. It covers:
 
 Ruff lint and format checks pass. GitHub CI runs the same suite on Linux with
 the MLX CPU backend. The PR check records the result for each commit.
+
+The source distribution and wheel build successfully. The wheel was installed
+in a fresh environment; its command entry point and bundled demo both work.
