@@ -33,7 +33,7 @@
       <p class="section-intro">Each point measures complete training steps at a source commit. Select a commit hash to inspect its code. One token is one byte.</p>
       <div class="timeline-heading"><h3>Training speed by commit</h3><span>{{COMMIT_COUNT}} measured commits · median bytes/second</span></div>
       <div class="timeline-grid">{{TIMELINE_CARDS}}</div>
-      <p class="note timeline-note">Each line joins measured commits in recording order. Trial ranges and raw step times are in the receipts below. The training step changed from eager execution to compiled MLX execution.</p>
+      <p class="note timeline-note">Each line joins measured commits in recording order. Scroll a chart to see its full history. The change shown compares its two latest points. Receipts include trial ranges, execution mode, and memory settings. Other running apps and temperature also affect speed.</p>
       <div class="timeline-heading latest-heading"><h3>Latest result</h3><span>Source commit {{LATEST_COMMIT}}</span></div>
       <div class="chart-panel">
         <div class="chart-controls"><div class="segmented" role="group" aria-label="Chart metric"><button type="button" data-metric="speed" aria-pressed="true">Throughput</button><button type="button" data-metric="memory" aria-pressed="false">Memory</button></div><div class="device-filter" role="group" aria-label="Device filter"><button type="button" data-device="all" aria-pressed="true">All</button><button type="button" data-device="gpu" aria-pressed="false">Metal GPU</button><button type="button" data-device="cpu" aria-pressed="false">CPU</button></div></div>

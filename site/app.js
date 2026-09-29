@@ -14,7 +14,7 @@ deviceButtons.forEach(button => button.addEventListener('click', () => {
   document.querySelectorAll('.bar-row, tbody tr').forEach(row => {
     row.hidden = device !== 'all' && row.dataset.device !== device;
   });
-  const count = document.querySelectorAll('tbody tr:not([hidden])').length;
+  const count = document.querySelectorAll('#speed-chart .bar-row:not([hidden])').length;
   document.getElementById('visible-count').textContent = `${count} measured configuration${count === 1 ? '' : 's'}`;
 }));
 document.getElementById('copy-command').addEventListener('click', async event => {

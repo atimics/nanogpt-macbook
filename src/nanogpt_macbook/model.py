@@ -6,6 +6,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
+from .attention import training_attention
 from .config import ModelConfig
 
 
@@ -23,9 +24,12 @@ class Attention(nn.Module):
             item.reshape(batch, length, self.heads, width // self.heads).transpose(0, 2, 1, 3)
             for item in (q, k, v)
         ]
-        attended = mx.fast.scaled_dot_product_attention(
-            q, k, v, scale=(width // self.heads) ** -0.5, mask="causal"
-        )
+        if self.training:
+            attended = training_attention(q, k, v)
+        else:
+            attended = mx.fast.scaled_dot_product_attention(
+                q, k, v, scale=(width // self.heads) ** -0.5, mask="causal"
+            )
         return self.proj(attended.transpose(0, 2, 1, 3).reshape(batch, length, width))
 
 
