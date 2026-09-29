@@ -19,6 +19,15 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Check Python, MLX, and the Metal GPU")
     commands.add_parser("presets", help="Show model sizes")
+    measuring = commands.add_parser("benchmark", help="Measure training speed and save raw timings")
+    measuring.add_argument("--preset", choices=("all", *PRESETS), default="all")
+    measuring.add_argument("--out", type=Path, required=True)
+    measuring.add_argument("--steps", type=int, default=100)
+    measuring.add_argument("--warmup", type=int, default=20)
+    measuring.add_argument("--repeats", type=int, default=3)
+    measuring.add_argument("--seed", type=int, default=1337)
+    measuring.add_argument("--device", choices=("gpu", "cpu"), default="gpu")
+    measuring.add_argument("--memory-gb", type=float, default=2)
     data = commands.add_parser("prepare", help="Turn UTF-8 text into training and validation data")
     source = data.add_mutually_exclusive_group(required=True)
     source.add_argument("--input", type=Path, help="A UTF-8 text file")
@@ -100,6 +109,20 @@ def doctor() -> int:
 
 
 def dispatch(args):
+    if args.command == "benchmark":
+        from .benchmark import benchmark
+
+        benchmark(
+            args.out,
+            list(PRESETS) if args.preset == "all" else [args.preset],
+            device=args.device,
+            memory_gb=args.memory_gb,
+            steps=args.steps,
+            warmup=args.warmup,
+            repeats=args.repeats,
+            seed=args.seed,
+        )
+        return 0
     if args.command == "doctor":
         return doctor()
     if args.command == "presets":
