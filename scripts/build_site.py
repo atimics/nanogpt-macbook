@@ -144,8 +144,7 @@ def load_results(root: Path):
         )
     )
     identities = [
-        (row["source"]["commit"], row["preset"], row["environment"]["device"])
-        for row in rows
+        (row["source"]["commit"], row["preset"], row["environment"]["device"]) for row in rows
     ]
     if len(set(identities)) != len(identities):
         raise ValueError("Keep one receipt per commit, model, and device")
@@ -181,7 +180,7 @@ def timeline_cards(rows, commits):
         ]
         if len(positions) > 1:
             path = " ".join(
-                f'{"M" if index == 0 else "L"}{x:.1f} {y:.1f}'
+                f"{'M' if index == 0 else 'L'}{x:.1f} {y:.1f}"
                 for index, (x, y) in enumerate(positions)
             )
             chart.append(f'<path d="{path}" fill="none" stroke="#187556" stroke-width="3"/>')
@@ -206,7 +205,7 @@ def timeline_cards(rows, commits):
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
             f'<span>{change_text}</span></div><div class="timeline-plot">'
-            f'{"".join(chart)}</div></article>'
+            f"{''.join(chart)}</div></article>"
         )
     return "\n".join(cards)
 
@@ -248,7 +247,7 @@ def table(rows):
         parts.append(
             f'<tr data-device="{device}"><td>{row["preset"]}<small>{label}</small></td>'
             f'<td><a href="{REPO}/commit/{sha}">{sha[:7]}</a>'
-            f'<small>{row["execution"]}</small></td>'
+            f"<small>{row['execution']}</small></td>"
             f"<td>{row['parameters']:,}</td><td>{config['context']} × "
             f"{row['train_config']['batch_size']}</td>"
             f"<td>{summary['median_bytes_per_second']:,.0f}</td>"
