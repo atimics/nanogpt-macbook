@@ -102,3 +102,25 @@ Ruff lint and formatting pass.
 The 300-step story run reached validation loss 2.1712, matching the previous
 result to four decimal places. Its [learning receipt](../benchmarks/learning/demo-f635c16.json)
 records the source hash and reported metrics.
+
+## Benchmark layout update, 29 September 2026
+
+At a 320-pixel viewport, the prior detailed-results table was 701 pixels wide
+inside a 276-pixel container. It required sideways scrolling. The expanded
+results now use labeled cards on narrow screens. The complete table stays
+available on wide screens. A disclosure keeps the chart overview short.
+
+Fresh timeline plots already fit at the tested widths. Returning browsers
+could reuse layout assets: GitHub Pages serves them with a 600-second cache,
+and earlier builds reused the same URLs. This is a possible cause of the
+reported chart behavior. The builder now gives changed CSS and JavaScript
+new content-based filenames. An integration test verifies those URLs and files.
+
+Plots now have explicit width bounds, inward endpoint labels, and label spacing
+based on rendered text. Browser checks at 320, 375, 600, 768, 851, 960, 1024,
+1100, 1101, and 1440 pixels showed matching container and scroll widths for the
+plots and expanded results. All 24 measured points and both comparison
+percentages remain. A temporary 60-point-per-series layout test also fits at
+320 pixels with all links present. CPU filtering, memory selection, and
+keyboard expansion of the results passed. The eight site tests, Ruff, and
+JavaScript syntax check pass.

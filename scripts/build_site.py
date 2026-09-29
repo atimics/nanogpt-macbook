@@ -1,11 +1,11 @@
 """Build a small static benchmark site from checked measurement receipts."""
 
 import argparse
+import hashlib
 import html
 import json
 import math
 import re
-import shutil
 import statistics
 from datetime import datetime
 from pathlib import Path
@@ -186,6 +186,7 @@ def timeline_cards(rows, commits):
         for index, (row, (x, y)) in enumerate(zip(series, positions, strict=True)):
             value = row["summary"]["median_bytes_per_second"]
             sha = row["source"]["commit"]
+            anchor = "start" if index == 0 else "end" if index == len(series) - 1 else "middle"
             chart.append(
                 f'<a href="{REPO}/commit/{sha}" data-position="{x:.2f}" '
                 f'data-label="{str(index in (0, len(series) - 1)).lower()}" '
@@ -194,9 +195,9 @@ def timeline_cards(rows, commits):
                 f"<title>{sha[:7]}: {value:,.0f} bytes per second</title>"
                 f'<circle cx="{x:.2f}%" cy="{y:.1f}" r="5" fill="#187556"/>'
                 f'<text class="timeline-label" x="{x:.2f}%" y="{y - 11:.1f}" '
-                'text-anchor="middle" '
+                f'text-anchor="{anchor}" '
                 f'font-size="10" fill="#172b27">{value / 1000:.1f}k</text>'
-                f'<text class="timeline-label" x="{x:.2f}%" y="190" text-anchor="middle" '
+                f'<text class="timeline-label" x="{x:.2f}%" y="190" text-anchor="{anchor}" '
                 f'font-size="10" fill="#187556">{sha[:7]}</text></a>'
             )
         chart.append("</svg>")
@@ -251,15 +252,17 @@ def table(rows):
         label = "Metal" if device == "gpu" else "CPU"
         sha = row["source"]["commit"]
         parts.append(
-            f'<tr data-device="{device}"><td>{row["preset"]}<small>{label}</small></td>'
-            f'<td><a href="{REPO}/commit/{sha}">{sha[:7]}</a>'
+            f'<tr data-device="{device}"><td data-label="Preset / device">'
+            f"{row['preset']}<small>{label}</small></td>"
+            f'<td data-label="Source commit"><a href="{REPO}/commit/{sha}">{sha[:7]}</a>'
             f"<small>{row['execution']}</small></td>"
-            f"<td>{row['parameters']:,}</td><td>{config['context']} × "
+            f'<td data-label="Parameters">{row["parameters"]:,}</td>'
+            f'<td data-label="Context × batch">{config["context"]} × '
             f"{row['train_config']['batch_size']}</td>"
-            f"<td>{summary['median_bytes_per_second']:,.0f}</td>"
-            f"<td>{summary['median_step_ms']:.2f} ms</td>"
-            f"<td>{summary['peak_memory_mib']:,.1f} MiB</td>"
-            f'<td><a href="./data/{html.escape(row["file"])}" download '
+            f'<td data-label="Bytes / second">{summary["median_bytes_per_second"]:,.0f}</td>'
+            f'<td data-label="Step time">{summary["median_step_ms"]:.2f} ms</td>'
+            f'<td data-label="Peak MLX">{summary["peak_memory_mib"]:,.1f} MiB</td>'
+            f'<td data-label="Receipt"><a href="./data/{html.escape(row["file"])}" download '
             f'aria-label="Download {row["preset"]} {label} receipt">JSON ↗</a></td></tr>'
         )
     return "\n".join(parts)
@@ -371,15 +374,20 @@ def build(output: Path, root: Path = ROOT):
         ),
     }
     page = (root / "site/index.html").read_text()
+    output.mkdir(parents=True, exist_ok=True)
+    for name in ("style.css", "app.js", "favicon.svg"):
+        asset = (root / "site" / name).read_bytes()
+        digest = hashlib.sha256(asset).hexdigest()[:12]
+        path = Path(name)
+        versioned = f"{path.stem}.{digest}{path.suffix}"
+        (output / versioned).write_bytes(asset)
+        page = page.replace(f'"./{name}"', f'"./{versioned}"')
     for key, value in replacements.items():
         page = page.replace("{{" + key + "}}", value)
     if re.search(r"\{\{[A-Z_]+\}\}", page):
         raise ValueError("Unfilled site template value")
-    output.mkdir(parents=True, exist_ok=True)
     (output / "data").mkdir(exist_ok=True)
     (output / "index.html").write_text(page)
-    for name in ("style.css", "app.js", "favicon.svg"):
-        shutil.copyfile(root / "site" / name, output / name)
     (output / ".nojekyll").touch()
     for receipt in receipts:
         (output / "data" / receipt["file"]).write_text(json.dumps(receipt, indent=2) + "\n")
