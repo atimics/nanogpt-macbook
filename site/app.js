@@ -1,5 +1,27 @@
 const metricButtons = document.querySelectorAll('[data-metric]');
 const deviceButtons = document.querySelectorAll('button[data-device]');
+function fitTimelineLabels(plot) {
+  const points = [...plot.querySelectorAll('svg a')];
+  if (points.length < 2) return;
+  const width = plot.clientWidth;
+  const last = points[points.length - 1];
+  let previousPosition = -Infinity;
+  points.forEach((point, index) => {
+    const position = Number(point.dataset.position) * width / 100;
+    const lastPosition = Number(last.dataset.position) * width / 100;
+    const show = index === 0 || point === last ||
+      (position - previousPosition >= 58 && lastPosition - position >= 58);
+    point.dataset.label = String(show);
+    if (show) previousPosition = position;
+  });
+}
+const timelineObserver = new ResizeObserver(entries => {
+  entries.forEach(entry => fitTimelineLabels(entry.target));
+});
+document.querySelectorAll('.timeline-plot').forEach(plot => {
+  fitTimelineLabels(plot);
+  timelineObserver.observe(plot);
+});
 metricButtons.forEach(button => button.addEventListener('click', () => {
   const memory = button.dataset.metric === 'memory';
   metricButtons.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
