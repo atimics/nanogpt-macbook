@@ -1,0 +1,833 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "d72aa09cb7d857e59a31580e39ec7ed4016ff2245d54e03b2c6e263a2bbf29be",
+    "commit": "df39732637636db2a0b134acabe1adb24df6a0df",
+    "source_dirty": false
+  },
+  "reference": {
+    "commit": "df39732637636db2a0b134acabe1adb24df6a0df",
+    "files_sha256": {
+      "src/nanogpt_macbook/model.py": "413e82179a58213eb2dbbeee0056dd6542c8a4cf75c7985e9f120a889fd92f0a",
+      "src/nanogpt_macbook/engine.py": "d70c46e7d47bd750cce5eecf64451afc8bed6a30550936ff92571f13e61be552"
+    },
+    "scope": "current shared operators with model and engine code from this commit"
+  },
+  "prototype": "import argparse\nimport hashlib\nimport inspect\nimport json\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\nimport numpy as np\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nfrom compare_sampling import compare, reference_modules\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.model import GPT, _residual_projection\n\n\ndef cached_forward(model, tokens, cache):\n    offset = cache[0][0].shape[2] if cache else 0\n    batch, length = tokens.shape\n    x = model.tokens(tokens) + model.positions(mx.arange(offset, offset + length))\n    updated = []\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        width = x.shape[-1]\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        if cache:\n            k, v = [mx.concatenate((old, new), axis=2) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        last = index == len(model.blocks) - 1\n        if last:\n            q, x = q[:, :, -1:, :], x[:, -1:, :]\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=None if last or length == 1 else 'causal')\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, 1 if last else length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_forward = cached_forward\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '    cache = None\\n    compiled_logits = None')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            inputs = mx.array([[sequence[-1]]] if cache is not None else [window], dtype=mx.int32)\n            logits, cache = cached_forward(model, inputs, cache)\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--device', choices=['gpu', 'cpu'], default='gpu')\n    parser.add_argument('--preset', choices=[*PRESETS, 'all'], default='all')\n    parser.add_argument('--pairs', type=int, default=5)\n    parser.add_argument('--out', type=Path, required=True)\n    args = parser.parse_args()\n    args.tokens, args.temperature, args.top_k, args.seed = 200, 0.8, 40, 42\n    assert not args.out.exists()\n    engine.select_device(args.device, 2)\n    reference, info = reference_modules('df39732')\n    import compare_sampling\n    compare_sampling.engine = patched_engine()\n    record = dict(source=source_info(), reference=info, prototype=Path(__file__).read_text(), device=args.device, results=[], correctness=[])\n    for preset in PRESETS if args.preset == 'all' else [args.preset]:\n        config = PRESETS[preset][0]\n        mx.random.seed(1337)\n        model = GPT(config)\n        model.eval()\n        mx.eval(model.parameters())\n        ids = mx.array(np.random.default_rng(1337).integers(0, 256, size=(1, config.context), dtype=np.int32))\n        cache = None\n        differences = []\n        for length in [16, 17, 18, 19, 20]:\n            actual, cache = cached_forward(model, ids[:, :length] if cache is None else ids[:, length-1:length], cache)\n            expected = model(ids[:, :length], last_token_only=True)[0, -1]\n            np.testing.assert_allclose(np.array(actual), np.array(expected), atol=3e-6, rtol=3e-5)\n            differences.append(float(mx.max(mx.abs(actual - expected)).item()))\n        record['correctness'].append(dict(preset=preset, max_errors=differences))\n        del model, cache, actual, expected, ids\n        for length in [16, config.context]:\n            prompt = ('After the rain, Mira opened the window. ' * 20)[:length]\n            compare(config, preset, prompt, args, reference, record)\n    print(json.dumps({r['preset']+str(r['prompt_bytes']):dict(ratio=r['median_ratio'], matches=r['matching_byte_pairs']) for r in record['results']}), flush=True)\n\n\nif __name__ == '__main__':\n    main()\n",
+  "device": "gpu",
+  "results": [
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, ",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.15428925026208162,
+          "bytes_per_second": 1296.26658798505,
+          "peak_memory_mib": 8.618099212646484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.3889160002581775,
+          "bytes_per_second": 514.2498633824072,
+          "peak_memory_mib": 8.845531463623047,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.08535704109817743,
+          "bytes_per_second": 2343.0990276474154,
+          "peak_memory_mib": 8.47451400756836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.1270821252837777,
+          "bytes_per_second": 1573.7854521506843,
+          "peak_memory_mib": 8.618099212646484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.12656695768237114,
+          "bytes_per_second": 1580.1912573573456,
+          "peak_memory_mib": 8.618099212646484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.08706841710954905,
+          "bytes_per_second": 2297.044171003603,
+          "peak_memory_mib": 8.47500228881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.0855405000038445,
+          "bytes_per_second": 2338.0737778129806,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.12464491697028279,
+          "bytes_per_second": 1604.5580105579675,
+          "peak_memory_mib": 8.618099212646484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.12487404141575098,
+          "bytes_per_second": 1601.6138961509819,
+          "peak_memory_mib": 8.618099212646484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.08597316686064005,
+          "bytes_per_second": 2326.307234025636,
+          "peak_memory_mib": 8.47451400756836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        0.39671612934324746,
+        1.4888300209189327,
+        1.4536494619297515,
+        1.457145059529472,
+        1.4524769294373918
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 1.4536494619297515,
+      "aggregate_ratio": 0.8971176824585444,
+      "faster_pairs": 4,
+      "median_bytes_per_second": {
+        "reference": 1580.1912573573456,
+        "updated": 2326.307234025636
+      }
+    },
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After th",
+      "prompt_bytes": 128,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.1127750831656158,
+          "bytes_per_second": 1773.4413878133887,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.11293008318170905,
+          "bytes_per_second": 1771.0072849073524,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.11238329159095883,
+          "bytes_per_second": 1779.6239740684894,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.11203545890748501,
+          "bytes_per_second": 1785.1491121677204,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.11564866686239839,
+          "bytes_per_second": 1729.375750072112,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.11566579062491655,
+          "bytes_per_second": 1729.1197243320125,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.11219312530010939,
+          "bytes_per_second": 1782.6404199456329,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.11279325000941753,
+          "bytes_per_second": 1773.1557516367445,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.1126307500526309,
+          "bytes_per_second": 1775.7140026728275,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.11217091605067253,
+          "bytes_per_second": 1782.9933733415462,
+          "peak_memory_mib": 8.47402572631836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        0.9986274692116904,
+        0.996904943087627,
+        0.9998519548223753,
+        1.0053490328191041,
+        1.0040994048916445
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 0.9998519548223753,
+      "aggregate_ratio": 1.000955175975824,
+      "faster_pairs": 2,
+      "median_bytes_per_second": {
+        "reference": 1773.4413878133887,
+        "updated": 1779.6239740684894
+      }
+    },
+    {
+      "preset": "small",
+      "model_config": {
+        "context": 256,
+        "layers": 6,
+        "heads": 8,
+        "width": 256,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, ",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.27276370814070106,
+          "bytes_per_second": 733.2353756418102,
+          "peak_memory_mib": 51.013489723205566,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.08247412508353591,
+          "bytes_per_second": 2425.002990906847,
+          "peak_memory_mib": 24.43790054321289,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.08105208398774266,
+          "bytes_per_second": 2467.5491382830523,
+          "peak_memory_mib": 24.437870025634766,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.2435966250486672,
+          "bytes_per_second": 821.0294373333079,
+          "peak_memory_mib": 51.013489723205566,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.24286604207009077,
+          "bytes_per_second": 823.499235608576,
+          "peak_memory_mib": 51.013489723205566,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.08234058413654566,
+          "bytes_per_second": 2428.9358898443,
+          "peak_memory_mib": 24.687580108642578,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.08472058363258839,
+          "bytes_per_second": 2360.7013953934634,
+          "peak_memory_mib": 24.199405670166016,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.2567724999971688,
+          "bytes_per_second": 778.8996095851589,
+          "peak_memory_mib": 51.013489723205566,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.24148812470957637,
+          "bytes_per_second": 828.1980749178797,
+          "peak_memory_mib": 51.013489723205566,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.0821922910399735,
+          "bytes_per_second": 2433.3182281381078,
+          "peak_memory_mib": 24.963985443115234,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "249b2adc0e522436e4f9dea9d731f751ed2202287791a5a375daa97a520e0826",
+          "text_sha256": "9d99275c780872916a28ff7559cfc4440c0acec990f2083e8bcdbcf07f963e70"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        3.307264040260212,
+        3.005433211137493,
+        2.949530230042396,
+        3.0308159952099216,
+        2.938087278673504
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 3.005433211137493,
+      "aggregate_ratio": 3.0463879348112526,
+      "faster_pairs": 5,
+      "median_bytes_per_second": {
+        "reference": 821.0294373333079,
+        "updated": 2428.9358898443
+      }
+    },
+    {
+      "preset": "small",
+      "model_config": {
+        "context": 256,
+        "layers": 6,
+        "heads": 8,
+        "width": 256,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, ",
+      "prompt_bytes": 256,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.24690904095768929,
+          "bytes_per_second": 810.0148914120658,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.2439101249910891,
+          "bytes_per_second": 819.9741605942218,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.2419112091884017,
+          "bytes_per_second": 826.7496188828479,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.24462916562333703,
+          "bytes_per_second": 817.5640034187342,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.24197437474504113,
+          "bytes_per_second": 826.5338022289844,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.24537687469273806,
+          "bytes_per_second": 815.0727335265021,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.24346620915457606,
+          "bytes_per_second": 821.4692326072261,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.24288345919921994,
+          "bytes_per_second": 823.4401826266576,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.2455875826999545,
+          "bytes_per_second": 814.3734214948037,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.24462654208764434,
+          "bytes_per_second": 817.5727715120315,
+          "peak_memory_mib": 57.59609603881836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6a1f61dead4907453b78e0cc99af6e264efcc0f61d289469f0715347b4783418",
+          "text_sha256": "0a3071c3d65cc038173df7cd6d1a73797c9f1081bfa8b3309f9f6e06812224cc"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.012295168012028,
+        1.0112353472336149,
+        0.9861335753340345,
+        0.9976064442068585,
+        1.0039286031847103
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 1.0039286031847103,
+      "aggregate_ratio": 1.0022083843798366,
+      "faster_pairs": 3,
+      "median_bytes_per_second": {
+        "reference": 817.5640034187342,
+        "updated": 819.9741605942218
+      }
+    },
+    {
+      "preset": "medium",
+      "model_config": {
+        "context": 512,
+        "layers": 8,
+        "heads": 8,
+        "width": 384,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, ",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.4208989576436579,
+          "bytes_per_second": 475.1734267047634,
+          "peak_memory_mib": 117.25247573852539,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.12751383380964398,
+          "bytes_per_second": 1568.4572726325935,
+          "peak_memory_mib": 112.72137832641602,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.12690254114568233,
+          "bytes_per_second": 1576.0125699169635,
+          "peak_memory_mib": 112.73225784301758,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.3932070410810411,
+          "bytes_per_second": 508.63789074107507,
+          "peak_memory_mib": 117.25442886352539,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.3894967078231275,
+          "bytes_per_second": 513.4831591203616,
+          "peak_memory_mib": 117.25442886352539,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.1268532918766141,
+          "bytes_per_second": 1576.624437894235,
+          "peak_memory_mib": 112.73225784301758,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.12666283315047622,
+          "bytes_per_second": 1578.9951560802274,
+          "peak_memory_mib": 112.73237991333008,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.3920317501761019,
+          "bytes_per_second": 510.16276082271236,
+          "peak_memory_mib": 117.25442886352539,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.38816379103809595,
+          "bytes_per_second": 515.246410452466,
+          "peak_memory_mib": 117.25442886352539,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.1272164173424244,
+          "bytes_per_second": 1572.1241344320076,
+          "peak_memory_mib": 112.72044372558594,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "6d6377f5395a83c1d2c2af130fbc93696b15d0c054f9300883dbe53c0bfd3760",
+          "text_sha256": "ef36ba1b061a6251f59c547bb670baa45e7e1558e618b62df781309fd28171c9"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        3.300810155798366,
+        3.098496196617883,
+        3.070450140166467,
+        3.095081172788594,
+        3.0512083200180666
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 3.095081172788594,
+      "aggregate_ratio": 3.1233592526891285,
+      "faster_pairs": 5,
+      "median_bytes_per_second": {
+        "reference": 510.16276082271236,
+        "updated": 1576.0125699169635
+      }
+    },
+    {
+      "preset": "medium",
+      "model_config": {
+        "context": 512,
+        "layers": 8,
+        "heads": 8,
+        "width": 384,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the ",
+      "prompt_bytes": 512,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.6920605828054249,
+          "bytes_per_second": 288.9920405367613,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.6915159998461604,
+          "bytes_per_second": 289.21962766514935,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.689155999571085,
+          "bytes_per_second": 290.2100542177322,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.6890630829147995,
+          "bytes_per_second": 290.2491875692742,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.6945247086696327,
+          "bytes_per_second": 287.9667166674336,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.6934161670506,
+          "bytes_per_second": 288.4270795858234,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.6934006251394749,
+          "bytes_per_second": 288.43354440266154,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.6928627924062312,
+          "bytes_per_second": 288.65744010502203,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.6903911251574755,
+          "bytes_per_second": 289.69086176242604,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.6917479173280299,
+          "bytes_per_second": 289.122663025177,
+          "peak_memory_mib": 220.83584213256836,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "3a07f62bc91062c22c5305266809dd78456bb876822c749e18a146440a74bab5",
+          "text_sha256": "7ef411dd9ccef367712f862601fd950dd85464dbe2996911d4222ebfba1ed912"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.0007875204035563,
+        0.9998651732607082,
+        1.0015986671088846,
+        0.9992243549922737,
+        0.998038603172388
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 0.9998651732607082,
+      "aggregate_ratio": 0.9999033263665008,
+      "faster_pairs": 2,
+      "median_bytes_per_second": {
+        "reference": 288.9920405367613,
+        "updated": 289.122663025177
+      }
+    }
+  ],
+  "correctness": [
+    {
+      "preset": "tiny",
+      "max_errors": [
+        0.0,
+        2.3096799850463867e-07,
+        1.7881393432617188e-07,
+        2.384185791015625e-07,
+        2.086162567138672e-07
+      ]
+    },
+    {
+      "preset": "small",
+      "max_errors": [
+        0.0,
+        4.76837158203125e-07,
+        4.76837158203125e-07,
+        4.172325134277344e-07,
+        4.6938657760620117e-07
+      ]
+    },
+    {
+      "preset": "medium",
+      "max_errors": [
+        0.0,
+        7.152557373046875e-07,
+        7.748603820800781e-07,
+        1.0281801223754883e-06,
+        8.642673492431641e-07
+      ]
+    }
+  ],
+  "prototype_entrypoint": "ngpt_prefix_cache_queued_probe.py",
+  "prototype_sources": {
+    "ngpt_prefix_cache_probe.py": "import argparse\nimport hashlib\nimport inspect\nimport json\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\nimport numpy as np\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nfrom compare_sampling import compare, reference_modules\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.model import GPT, _residual_projection\n\n\ndef cached_forward(model, tokens, cache):\n    offset = cache[0][0].shape[2] if cache else 0\n    batch, length = tokens.shape\n    x = model.tokens(tokens) + model.positions(mx.arange(offset, offset + length))\n    updated = []\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        width = x.shape[-1]\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        if cache:\n            k, v = [mx.concatenate((old, new), axis=2) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        last = index == len(model.blocks) - 1\n        if last:\n            q, x = q[:, :, -1:, :], x[:, -1:, :]\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=None if last or length == 1 else 'causal')\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, 1 if last else length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_forward = cached_forward\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '    cache = None\\n    compiled_logits = None')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            inputs = mx.array([[sequence[-1]]] if cache is not None else [window], dtype=mx.int32)\n            logits, cache = cached_forward(model, inputs, cache)\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--device', choices=['gpu', 'cpu'], default='gpu')\n    parser.add_argument('--preset', choices=[*PRESETS, 'all'], default='all')\n    parser.add_argument('--pairs', type=int, default=5)\n    parser.add_argument('--out', type=Path, required=True)\n    args = parser.parse_args()\n    args.tokens, args.temperature, args.top_k, args.seed = 200, 0.8, 40, 42\n    assert not args.out.exists()\n    engine.select_device(args.device, 2)\n    reference, info = reference_modules('df39732')\n    import compare_sampling\n    compare_sampling.engine = patched_engine()\n    record = dict(source=source_info(), reference=info, prototype=Path(__file__).read_text(), device=args.device, results=[], correctness=[])\n    for preset in PRESETS if args.preset == 'all' else [args.preset]:\n        config = PRESETS[preset][0]\n        mx.random.seed(1337)\n        model = GPT(config)\n        model.eval()\n        mx.eval(model.parameters())\n        ids = mx.array(np.random.default_rng(1337).integers(0, 256, size=(1, config.context), dtype=np.int32))\n        cache = None\n        differences = []\n        for length in [16, 17, 18, 19, 20]:\n            actual, cache = cached_forward(model, ids[:, :length] if cache is None else ids[:, length-1:length], cache)\n            expected = model(ids[:, :length], last_token_only=True)[0, -1]\n            np.testing.assert_allclose(np.array(actual), np.array(expected), atol=3e-6, rtol=3e-5)\n            differences.append(float(mx.max(mx.abs(actual - expected)).item()))\n        record['correctness'].append(dict(preset=preset, max_errors=differences))\n        del model, cache, actual, expected, ids\n        for length in [16, config.context]:\n            prompt = ('After the rain, Mira opened the window. ' * 20)[:length]\n            compare(config, preset, prompt, args, reference, record)\n    print(json.dumps({r['preset']+str(r['prompt_bytes']):dict(ratio=r['median_ratio'], matches=r['matching_byte_pairs']) for r in record['results']}), flush=True)\n\n\nif __name__ == '__main__':\n    main()\n",
+    "ngpt_prefix_cache_static_probe.py": "import inspect\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\n\nimport ngpt_prefix_cache_probe as base\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.model import _residual_projection\n\n\ndef static_step(model, tokens, cache, position):\n    x = model.tokens(tokens) + model.positions(position)\n    updated = []\n    mask = mx.arange(model.config.context) <= position\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        batch, length, width = x.shape\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        k, v = [mx.slice_update(old, new, position, axes=[2]) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=mask)\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef padded_prefill(model, inputs):\n    logits, cache = base.cached_forward(model, inputs, None)\n    cache = [(mx.pad(k, [(0, 0), (0, 0), (0, model.config.context - k.shape[2]), (0, 0)]), mx.pad(v, [(0, 0), (0, 0), (0, model.config.context - v.shape[2]), (0, 0)])) for k, v in cache]\n    return logits, cache\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.static_step = static_step\n    module.padded_prefill = padded_prefill\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '''    cache = None\n    cached_step = mx.compile(lambda inputs, state, position: static_step(model, inputs, state, position))\n    compiled_logits = None''')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            if cache is None:\n                logits, cache = padded_prefill(model, mx.array([window], dtype=mx.int32))\n            else:\n                logits, cache = cached_step(mx.array([[sequence[-1]]], dtype=mx.int32), cache, mx.array([len(sequence)-1], dtype=mx.int32))\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\nbase.patched_engine = patched_engine\nif __name__ == '__main__':\n    base.main()\n",
+    "ngpt_prefix_cache_queued_probe.py": "import inspect\nfrom types import ModuleType\n\nimport mlx.core as mx\n\nimport ngpt_prefix_cache_probe as base\nfrom ngpt_prefix_cache_static_probe import padded_prefill, static_step\nfrom nanogpt_macbook import engine\n\n\ndef choose(logits, temperature, top_k):\n    if temperature == 0:\n        return mx.argmax(logits)\n    logits = logits / temperature\n    if top_k:\n        cutoff = mx.sort(logits)[-top_k]\n        logits = mx.where(logits >= cutoff, logits, -float('inf'))\n    return mx.random.categorical(logits)\n\n\ndef cached_prefix(model, window, count, temperature, top_k):\n    logits, cache = padded_prefill(model, mx.array([window], dtype=mx.int32))\n    token = choose(logits, temperature, top_k)\n    outputs = [token]\n    mx.async_eval(token, cache)\n\n    def step(token, cache, position):\n        logits, cache = static_step(model, token.reshape(1, 1), cache, position)\n        return choose(logits, temperature, top_k), cache\n\n    step = mx.compile(step, inputs=mx.random.state, outputs=mx.random.state)\n    for index in range(1, count):\n        token, cache = step(token, cache, mx.array([len(window) + index - 1], dtype=mx.int32))\n        outputs.append(token)\n        mx.async_eval(token, cache)\n        if index % 8 == 0:\n            mx.eval(outputs[-8])\n    return mx.stack(outputs).tolist()\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_prefix = cached_prefix\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '''    if len(sequence) < model.config.context and tokens > 1:\n        count = min(tokens, model.config.context - len(sequence) + 1)\n        generated = cached_prefix(model, sequence, count, temperature, top_k)\n        sequence.extend(generated)\n    compiled_logits = None''')\n    source = source.replace('    for index in range(tokens):', '    for index in range(len(generated), tokens):')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\nbase.patched_engine = patched_engine\nif __name__ == '__main__':\n    base.main()\n"
+  },
+  "method_note": "Five alternating pairs, 200 bytes, temperature 0.8, top-k 40, sampling seed 42, weight seed 1337. One process; complete generation timed after weights load. The correctness array checks the dynamic forward. Byte hashes check the chosen prototype. Early calls include kernel setup."
+}
