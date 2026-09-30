@@ -1,0 +1,482 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "262f19922ff855f62df619da0064b16be8b85cfd525a98fecf4498d1b99d0f62",
+    "commit": "7fec185ab2c33f45785ef3bdfeeab30c19766873",
+    "source_dirty": false
+  },
+  "method": {
+    "device": "gpu",
+    "memory_limit_gib": 2,
+    "warmup": 20,
+    "steps": 200,
+    "repeats": 5,
+    "queue": 2,
+    "scope": "Isolated compiled forward, parameter gradients, and input gradients. Fixed random inputs and upstream gradients. No optimizer update. Timings guide full-training experiments; component times are not additive."
+  },
+  "runner_source": "import gc\nimport json\nimport statistics\nimport time\nfrom collections import deque\nfrom pathlib import Path\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.model import GPT, _residual_projection\n\n\nclass AttentionBranch(nn.Module):\n    def __init__(self, block):\n        super().__init__()\n        self.norm = block.attention_norm\n        self.attention = block.attention\n\n    def __call__(self, x):\n        return self.attention(self.norm(x), x)\n\n\nclass MLPBranch(nn.Module):\n    def __init__(self, block):\n        super().__init__()\n        self.norm = block.mlp_norm\n        self.up = block.up\n        self.down = block.down\n\n    def __call__(self, x):\n        return _residual_projection(x, gelu_approx(self.up(self.norm(x))), self.down)\n\n\ndef measure(preset, name, config, training):\n    gc.collect()\n    mx.clear_cache()\n    mx.random.seed(1337)\n    model = GPT(config)\n    block = model.blocks[0]\n    choices = dict(block=block, attention=AttentionBranch(block), mlp=MLPBranch(block), norm=block.attention_norm, qkv=block.attention.qkv, up=block.up, down=block.down)\n    component = choices[name]\n    params = component.parameters()\n    width = 4*config.width if name=='down' else config.width\n    x = mx.random.normal((training.batch_size, config.context, width))\n    dy = mx.random.normal(component(x).shape)\n    mx.eval(params,x,dy)\n    del model,block,choices\n    gc.collect()\n    mx.clear_cache()\n\n    def loss(weights, inputs, upstream):\n        component.update(weights)\n        return (component(inputs)*upstream).sum()\n\n    step = mx.compile(mx.value_and_grad(loss,argnums=(0,1)))\n\n    def run(count):\n        pending=deque()\n        started=time.perf_counter()\n        for _ in range(count):\n            outputs=step(params,x,dy)\n            mx.async_eval(outputs)\n            pending.append(outputs)\n            if len(pending)==2:\n                mx.eval(pending.popleft())\n        while pending: mx.eval(pending.popleft())\n        mx.synchronize()\n        return (time.perf_counter()-started)*1000/count\n\n    run(20)\n    intervals=[run(200) for _ in range(5)]\n    return dict(preset=preset,component=name,input_shape=x.shape,output_shape=dy.shape,step_ms=intervals,median_ms=statistics.median(intervals))\n\n\nout=Path('/private/tmp/ngpt-training-components-7fec185.json')\nassert not out.exists()\nengine.select_device('gpu',2)\nrecord=dict(source=source_info(),method=dict(device='gpu',memory_limit_gib=2,warmup=20,steps=200,repeats=5,queue=2,scope='Isolated compiled forward, parameter gradients, and input gradients. Fixed random inputs and upstream gradients. No optimizer update. Timings guide full-training experiments; component times are not additive.'),runner_source=Path(__file__).read_text(),results=[])\nfor preset,(config,training) in PRESETS.items():\n    for name in ['block','attention','mlp','norm','qkv','up','down']:\n        result=measure(preset,name,config,training)\n        record['results'].append(result)\n        out.write_text(json.dumps(record,indent=2)+'\\n')\n        print(preset,name,round(result['median_ms'],4),'ms',flush=True)\n",
+  "results": [
+    {
+      "preset": "tiny",
+      "component": "block",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        128
+      ],
+      "step_ms": [
+        0.3824885399080813,
+        0.374572710134089,
+        0.37200187565758824,
+        0.3744502109475434,
+        0.37587582832202315
+      ],
+      "median_ms": 0.374572710134089
+    },
+    {
+      "preset": "tiny",
+      "component": "attention",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        128
+      ],
+      "step_ms": [
+        0.19589541479945183,
+        0.19477375084534287,
+        0.20005750004202127,
+        0.2045179158449173,
+        0.17694896087050438
+      ],
+      "median_ms": 0.19589541479945183
+    },
+    {
+      "preset": "tiny",
+      "component": "mlp",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        128
+      ],
+      "step_ms": [
+        0.18807729007676244,
+        0.19275395898148417,
+        0.19708167063072324,
+        0.20590854110196233,
+        0.19924666499719024
+      ],
+      "median_ms": 0.19708167063072324
+    },
+    {
+      "preset": "tiny",
+      "component": "norm",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        128
+      ],
+      "step_ms": [
+        0.07310000015422702,
+        0.07277458673343062,
+        0.07261708378791809,
+        0.07306520361453295,
+        0.07397646084427834
+      ],
+      "median_ms": 0.07306520361453295
+    },
+    {
+      "preset": "tiny",
+      "component": "qkv",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        384
+      ],
+      "step_ms": [
+        0.10420916602015495,
+        0.10870917001739144,
+        0.10687604546546936,
+        0.11171270394697785,
+        0.11829645838588476
+      ],
+      "median_ms": 0.10870917001739144
+    },
+    {
+      "preset": "tiny",
+      "component": "up",
+      "input_shape": [
+        8,
+        128,
+        128
+      ],
+      "output_shape": [
+        8,
+        128,
+        512
+      ],
+      "step_ms": [
+        0.11618728982284665,
+        0.12904291972517967,
+        0.12244437588378787,
+        0.12009333353489637,
+        0.11282271007075906
+      ],
+      "median_ms": 0.12009333353489637
+    },
+    {
+      "preset": "tiny",
+      "component": "down",
+      "input_shape": [
+        8,
+        128,
+        512
+      ],
+      "output_shape": [
+        8,
+        128,
+        128
+      ],
+      "step_ms": [
+        0.1117458357475698,
+        0.11384145822376013,
+        0.10282791452482343,
+        0.11746583506464958,
+        0.1142752100713551
+      ],
+      "median_ms": 0.11384145822376013
+    },
+    {
+      "preset": "small",
+      "component": "block",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        256
+      ],
+      "step_ms": [
+        1.6689262492582202,
+        1.7013264610432088,
+        1.6742722899653018,
+        1.67839479399845,
+        1.6890318761579692
+      ],
+      "median_ms": 1.67839479399845
+    },
+    {
+      "preset": "small",
+      "component": "attention",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        256
+      ],
+      "step_ms": [
+        0.8678583358414471,
+        0.7889539562165737,
+        0.7681262493133545,
+        0.7783585391007364,
+        0.7882377062924206
+      ],
+      "median_ms": 0.7882377062924206
+    },
+    {
+      "preset": "small",
+      "component": "mlp",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        256
+      ],
+      "step_ms": [
+        0.94898437615484,
+        0.9674662491306663,
+        0.9691437496803701,
+        0.9506256249733269,
+        0.9593381243757904
+      ],
+      "median_ms": 0.9593381243757904
+    },
+    {
+      "preset": "small",
+      "component": "norm",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        256
+      ],
+      "step_ms": [
+        0.08480228949338198,
+        0.08881749818101525,
+        0.08835374843329191,
+        0.0861645839177072,
+        0.08195604430511594
+      ],
+      "median_ms": 0.0861645839177072
+    },
+    {
+      "preset": "small",
+      "component": "qkv",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        768
+      ],
+      "step_ms": [
+        0.39373687468469143,
+        0.3876452031545341,
+        0.40107603883370757,
+        0.4026224999688566,
+        0.3891472890973091
+      ],
+      "median_ms": 0.39373687468469143
+    },
+    {
+      "preset": "small",
+      "component": "up",
+      "input_shape": [
+        8,
+        256,
+        256
+      ],
+      "output_shape": [
+        8,
+        256,
+        1024
+      ],
+      "step_ms": [
+        0.5180764547549188,
+        0.5240354151464999,
+        0.5361310439184308,
+        0.521352500654757,
+        0.5175250000320375
+      ],
+      "median_ms": 0.521352500654757
+    },
+    {
+      "preset": "small",
+      "component": "down",
+      "input_shape": [
+        8,
+        256,
+        1024
+      ],
+      "output_shape": [
+        8,
+        256,
+        256
+      ],
+      "step_ms": [
+        0.3919437504373491,
+        0.3880187519825995,
+        0.39771271171048284,
+        0.3976118750870228,
+        0.4020858299918473
+      ],
+      "median_ms": 0.3976118750870228
+    },
+    {
+      "preset": "medium",
+      "component": "block",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        384
+      ],
+      "step_ms": [
+        3.398287915624678,
+        3.5379204154014587,
+        3.622632916085422,
+        3.563860624562949,
+        3.6666102102026343
+      ],
+      "median_ms": 3.563860624562949
+    },
+    {
+      "preset": "medium",
+      "component": "attention",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        384
+      ],
+      "step_ms": [
+        1.7381847952492535,
+        1.7689993744716048,
+        1.7707352107390761,
+        1.750283958390355,
+        1.783046459313482
+      ],
+      "median_ms": 1.7689993744716048
+    },
+    {
+      "preset": "medium",
+      "component": "mlp",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        384
+      ],
+      "step_ms": [
+        2.0043779141269624,
+        2.0039470843039453,
+        2.0629408303648233,
+        2.0500295842066407,
+        2.0364795811474323
+      ],
+      "median_ms": 2.0364795811474323
+    },
+    {
+      "preset": "medium",
+      "component": "norm",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        384
+      ],
+      "step_ms": [
+        0.12431458570063114,
+        0.1161929196678102,
+        0.1054985448718071,
+        0.11421958450227976,
+        0.10585645446553826
+      ],
+      "median_ms": 0.11421958450227976
+    },
+    {
+      "preset": "medium",
+      "component": "qkv",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        1152
+      ],
+      "step_ms": [
+        0.7621777080930769,
+        0.7706193765625358,
+        0.7814829191192985,
+        0.7807660452090204,
+        0.8051258348859847
+      ],
+      "median_ms": 0.7807660452090204
+    },
+    {
+      "preset": "medium",
+      "component": "up",
+      "input_shape": [
+        4,
+        512,
+        384
+      ],
+      "output_shape": [
+        4,
+        512,
+        1536
+      ],
+      "step_ms": [
+        1.0216989531181753,
+        1.011918329168111,
+        1.047842288389802,
+        1.0320487502031028,
+        1.0067608300596476
+      ],
+      "median_ms": 1.0216989531181753
+    },
+    {
+      "preset": "medium",
+      "component": "down",
+      "input_shape": [
+        4,
+        512,
+        1536
+      ],
+      "output_shape": [
+        4,
+        512,
+        384
+      ],
+      "step_ms": [
+        0.847252500243485,
+        0.8469718741253018,
+        0.8822366641834378,
+        0.887148545589298,
+        0.9069483354687691
+      ],
+      "median_ms": 0.8822366641834378
+    }
+  ]
+}

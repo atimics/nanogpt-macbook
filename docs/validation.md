@@ -589,3 +589,24 @@ Real pointer and touch checks pass in both engines. A tap selects a point
 without a drag. The comparison titles retain the selected references, and the
 latest point restores its current comparisons. Browser error logs are clear.
 Ten Python site tests, nine Node regressions, Ruff, and format checks pass.
+
+## Packed AdamW updates, 30 September 2026
+
+Source `8bff3c9` passes all 363 CPU and Metal tests. Eleven update cases
+exercise the grouped path, compare exact synthetic parameter/moment values,
+check schedules and restored state, and verify real training checkpoints.
+Three paired 100-step medium story runs keep validation loss within
+0.00000072 nats and final weights within 0.00000036. Saved random state matches.
+
+The [report](../benchmarks/README.md#packed-adamw-updates) includes the
+component profile, four complete-training prototype comparisons, a longer
+16-pair confirmation, and 12 fresh pairs from the committed source.
+The final median paired gain is +0.81%; peak active MLX allocation
+falls by 124.9 MiB. The separate standard point records
+44,562 bytes/s, -2.6% versus the previous medium point. All results
+remain available. Git hashes, raw intervals, rates, paired and aggregate
+ratios, counts, and memory values were audited before publication.
+
+All 19 site checks pass. The 85-point preview fits at 240, 320, 768, and
+1280 px. All eight comparisons remain readable. Phone Memory/CPU filters
+and expanded results fit their containers, and browser error logs are clear.

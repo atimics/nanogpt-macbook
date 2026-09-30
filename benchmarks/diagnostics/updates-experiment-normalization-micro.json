@@ -1,0 +1,366 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "262f19922ff855f62df619da0064b16be8b85cfd525a98fecf4498d1b99d0f62",
+    "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+    "source_dirty": false
+  },
+  "runner_source": "import argparse\nimport gc\nimport hashlib\nimport json\nimport statistics\nimport sys\nimport time\nfrom collections import deque\nfrom pathlib import Path\nfrom types import ModuleType\nfrom unittest.mock import patch\n\nimport mlx.core as mx\nimport numpy as np\n\nfrom nanogpt_macbook import normalization\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.engine import select_device\n\nsys.path.insert(0, str(Path.cwd() / 'scripts'))\nfrom compare_normalization import compare\n\n\nBASE = Path(normalization.__file__).read_text()\n\n\ndef variant(name):\n    source = BASE\n    if name == 'packed':\n        source = source.replace('output_names=[\"dx\", \"dw\", \"db\"]', 'output_names=[\"dx\", \"partials\"]')\n        source = source.replace('dw[group * D + col] = w;', 'partials[group * D + col] = w;')\n        source = source.replace('db[group * D + col] = b;', 'partials[((N + R - 1) / R + group) * D + col] = b;')\n        source = source.replace('dx, dw, db = backward(', 'dx, partials = backward(')\n        source = source.replace('output_shapes=[x.shape, (groups, width), (groups, width)]', 'output_shapes=[x.shape, (2, groups, width)]')\n        source = source.replace('output_dtypes=[mx.float32] * 3', 'output_dtypes=[mx.float32] * 2')\n        source = source.replace('return dx, mx.sum(dw, axis=0), mx.sum(db, axis=0)', 'gradients = mx.sum(partials, axis=1)\\n        return dx, gradients[0], gradients[1]')\n    else:\n        simds = int(name.removeprefix('fused'))\n        source = source.replace('return dx, mx.sum(dw, axis=0), mx.sum(db, axis=0)', f'''dw, db = _reduce_kernel()(inputs=[dw, db], template=[(\"G\", groups), (\"D\", width), (\"S\", {simds})], output_shapes=[(width,), (width,)], output_dtypes=[mx.float32] * 2, grid=(((width + 31) // 32) * {simds} * 32, 1, 1), threadgroup=({simds} * 32, 1, 1))\n        return dx, dw, db''')\n        source += '''\n@lru_cache(maxsize=1)\ndef _reduce_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_both_gradients\",\n        input_names=[\"partial_w\", \"partial_b\"],\n        output_names=[\"dw\", \"db\"],\n        source=\"\"\"\n            uint lane = thread_index_in_simdgroup;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint col = threadgroup_position_in_grid.x * 32 + lane;\n            float w = 0, b = 0;\n            for (uint row = simd; row < G; row += S) {\n                if (col < D) {\n                    w += partial_w[row * D + col];\n                    b += partial_b[row * D + col];\n                }\n            }\n            threadgroup float ws[S * 32], bs[S * 32];\n            ws[simd * 32 + lane] = w;\n            bs[simd * 32 + lane] = b;\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            if (simd == 0 && col < D) {\n                w = 0; b = 0;\n                for (uint s = 0; s < S; ++s) {\n                    w += ws[s * 32 + lane];\n                    b += bs[s * 32 + lane];\n                }\n                dw[col] = w;\n                db[col] = b;\n            }\n        \"\"\",\n    )\n'''\n    module = ModuleType('norm_' + name)\n    exec(compile(source, str(Path(__file__)) + ':' + name, 'exec'), module.__dict__)\n    return module, source\n\n\ndef micro(name, cls, rows, width):\n    mx.random.seed(1337)\n    layer = cls(width)\n    x = mx.random.normal((rows, width))\n    w = mx.random.normal((width,))\n    b = mx.random.normal((width,))\n    dy = mx.random.normal(x.shape)\n    mx.eval(x, w, b, dy)\n\n    def loss(x, w, b, dy):\n        layer.weight, layer.bias = w, b\n        return (layer(x) * dy).sum()\n\n    step = mx.compile(mx.value_and_grad(loss, argnums=(0, 1, 2)))\n    actual = step(x, w, b, dy)\n    expected = mx.value_and_grad(lambda x, w, b: (mx.fast.layer_norm(x, w, b, layer.eps) * dy).sum(), argnums=(0, 1, 2))(x, w, b)\n    checks = []\n    for a, e in zip(actual[1], expected[1]):\n        aa, ee = np.array(a), np.array(e)\n        np.testing.assert_allclose(aa, ee, atol=6e-5, rtol=4e-5)\n        checks.append(float(np.max(np.abs(aa-ee))))\n\n    def run(n):\n        pending = deque()\n        start = time.perf_counter()\n        for _ in range(n):\n            out = step(x, w, b, dy)\n            mx.async_eval(out)\n            pending.append(out)\n            if len(pending) == 2:\n                mx.eval(pending.popleft())\n        while pending:\n            mx.eval(pending.popleft())\n        mx.synchronize()\n        return (time.perf_counter()-start)*1000/n\n    run(20)\n    timings = [run(300) for _ in range(5)]\n    return dict(variant=name, rows=rows, width=width, median_ms=statistics.median(timings), repeat_ms=timings, gradient_max_abs_errors=checks)\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--out', type=Path, required=True)\n    parser.add_argument('--full', choices=['packed', 'fused1', 'fused2', 'fused4', 'fused8'])\n    parser.add_argument('--pairs', type=int, default=8)\n    parser.add_argument('--steps', type=int, default=100)\n    args = parser.parse_args()\n    assert not args.out.exists()\n    select_device('gpu', 2)\n    names = [args.full] if args.full else ['packed', 'fused1', 'fused2', 'fused4', 'fused8']\n    variants = {name: variant(name) for name in names}\n    record = dict(source=source_info(), runner_source=Path(__file__).read_text(), baseline_sha256=hashlib.sha256(BASE.encode()).hexdigest(), variants={name:dict(source=source,sha256=hashlib.sha256(source.encode()).hexdigest()) for name,(_,source) in variants.items()}, results=[])\n    reference = normalization.LayerNorm.__call__\n    if args.full:\n        record['method'] = dict(scope='Complete training', pairs=args.pairs,steps=args.steps,warmup=20,queue=2,memory_gib=2,fresh=True)\n        for preset in ['tiny', 'small', 'medium']:\n            with patch.object(normalization.LayerNorm, '__call__', variants[args.full][0].LayerNorm.__call__):\n                result = compare(preset,args.pairs,args.steps,20,reference=reference,queued=True,fresh=True)\n            record['results'].append(result)\n            args.out.write_text(json.dumps(record,indent=2)+'\\n')\n    else:\n        record['method'] = dict(scope='Isolated LayerNorm forward and all gradients', warmup=20,steps=300,repeats=5,queue=2,memory_gib=2)\n        for rows,width in [(1024,128),(2048,256),(2048,384)]:\n            for name,cls in [('reference',normalization.LayerNorm)]+[(name,module.LayerNorm) for name,(module,_) in variants.items()]:\n                result = micro(name,cls,rows,width)\n                print(name,rows,width,round(result['median_ms'],4),'ms',flush=True)\n                record['results'].append(result)\n                args.out.write_text(json.dumps(record,indent=2)+'\\n')\n                gc.collect()\n                mx.clear_cache()\n\n\nif __name__ == '__main__':\n    main()\n",
+  "baseline_sha256": "3fda0d27eb54d4873e2389a7468fbbc6c0d3214f335d5866ffa6f1dd68a793a9",
+  "variants": {
+    "packed": {
+      "source": "\"\"\"LayerNorm with saved row statistics and grouped gradients on Metal.\"\"\"\n\nfrom functools import lru_cache\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\n\n@lru_cache(maxsize=1)\ndef _forward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_forward\",\n        input_names=[\"x\", \"weight\", \"bias\", \"epsilon\"],\n        output_names=[\"out\", \"stats\"],\n        source=\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            // Shift before summing to preserve small differences in nearly\n            // constant rows. Save the origin and shifted mean separately.\n            float origin = x[row * D];\n            float values[C], mean = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? x[row * D + col] - origin : 0;\n                mean += values[i];\n            }\n            mean = simd_sum(mean) / D;\n            float variance = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? values[i] - mean : 0;\n                variance += values[i] * values[i];\n            }\n            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);\n            if (lane == 0) {\n                stats[row * 3] = origin;\n                stats[row * 3 + 1] = mean;\n                stats[row * 3 + 2] = inv;\n            }\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];\n                }\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=1)\ndef _backward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_saved_vjp\",\n        input_names=[\"x\", \"weight\", \"grad\", \"stats\"],\n        output_names=[\"dx\", \"partials\"],\n        source=\"\"\"\n            uint group = threadgroup_position_in_grid.x;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint lane = thread_index_in_simdgroup;\n            uint row = group * R + simd;\n            float origin = row < N ? stats[row * 3] : 0;\n            float mean = row < N ? stats[row * 3 + 1] : 0;\n            float inv = row < N ? stats[row * 3 + 2] : 0;\n            float values[C], gradients[C], weights[C];\n            float sum_g = 0, sum_gx = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;\n                gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;\n                weights[i] = col < D ? weight[col] : 0;\n                sum_g += gradients[i] * weights[i];\n                sum_gx += gradients[i] * weights[i] * values[i];\n            }\n            sum_g = simd_sum(sum_g) / D;\n            sum_gx = simd_sum(sum_gx) / D * inv * inv;\n            threadgroup float partial_w[R * D];\n            threadgroup float partial_b[R * D];\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    if (row < N) {\n                        dx[row * D + col] = inv * (\n                            gradients[i] * weights[i] - sum_g - values[i] * sum_gx);\n                    }\n                    partial_w[simd * D + col] = gradients[i] * values[i] * inv;\n                    partial_b[simd * D + col] = gradients[i];\n                }\n            }\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            for (uint col = thread_position_in_threadgroup.x; col < D; col += R * 32) {\n                float w = 0, b = 0;\n                for (uint r = 0; r < R; ++r) {\n                    w += partial_w[r * D + col];\n                    b += partial_b[r * D + col];\n                }\n                partials[group * D + col] = w;\n                partials[((N + R - 1) / R + group) * D + col] = b;\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=32)\ndef _normalize(eps):\n    forward = _forward_kernel()\n    backward = _backward_kernel()\n\n    @mx.custom_function\n    def apply(x, weight, bias):\n        width = x.shape[-1]\n        count = x.size // width\n        return tuple(\n            forward(\n                inputs=[x, weight, bias, mx.array(eps)],\n                template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32)],\n                output_shapes=[x.shape, (count, 3)],\n                output_dtypes=[mx.float32] * 2,\n                grid=(((count + 3) // 4) * 128, 1, 1),\n                threadgroup=(128, 1, 1),\n            )\n        )\n\n    @apply.vjp\n    def vjp(primals, cotangent, output):\n        x, weight, _bias = primals\n        width = x.shape[-1]\n        count = x.size // width\n        # Keep the two shared partial buffers within 32 KiB. More rows per\n        # group reduce the weight and bias gradients written to device memory.\n        rows = 16 if width <= 256 else 8\n        groups = (count + rows - 1) // rows\n        dx, partials = backward(\n            inputs=[x, weight, cotangent[0], output[1]],\n            template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32), (\"R\", rows)],\n            output_shapes=[x.shape, (2, groups, width)],\n            output_dtypes=[mx.float32] * 2,\n            grid=(groups * rows * 32, 1, 1),\n            threadgroup=(rows * 32, 1, 1),\n        )\n        gradients = mx.sum(partials, axis=1)\n        return dx, gradients[0], gradients[1]\n\n    # Row statistics are private outputs used only by the backward pass.\n    return lambda x, weight, bias: apply(x, weight, bias)[0]\n\n\nclass LayerNorm(nn.LayerNorm):\n    \"\"\"Normalize float32 rows on Metal while keeping MLX's checkpoint layout.\"\"\"\n\n    def __call__(self, x):\n        weight, bias = self.get(\"weight\"), self.get(\"bias\")\n        if (\n            mx.default_device() == mx.gpu\n            and mx.metal.is_available()\n            and x.ndim > 0\n            and x.size > 0\n            and 1 <= x.shape[-1] <= 512\n            and weight is not None\n            and bias is not None\n            and x.dtype == weight.dtype == bias.dtype == mx.float32\n        ):\n            return _normalize(self.eps)(x, weight, bias)\n        return super().__call__(x)\n",
+      "sha256": "9f4dd89541bc398bf38939282565601428ca9fa98883796e9dccc500bb503c8a"
+    },
+    "fused1": {
+      "source": "\"\"\"LayerNorm with saved row statistics and grouped gradients on Metal.\"\"\"\n\nfrom functools import lru_cache\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\n\n@lru_cache(maxsize=1)\ndef _forward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_forward\",\n        input_names=[\"x\", \"weight\", \"bias\", \"epsilon\"],\n        output_names=[\"out\", \"stats\"],\n        source=\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            // Shift before summing to preserve small differences in nearly\n            // constant rows. Save the origin and shifted mean separately.\n            float origin = x[row * D];\n            float values[C], mean = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? x[row * D + col] - origin : 0;\n                mean += values[i];\n            }\n            mean = simd_sum(mean) / D;\n            float variance = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? values[i] - mean : 0;\n                variance += values[i] * values[i];\n            }\n            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);\n            if (lane == 0) {\n                stats[row * 3] = origin;\n                stats[row * 3 + 1] = mean;\n                stats[row * 3 + 2] = inv;\n            }\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];\n                }\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=1)\ndef _backward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_saved_vjp\",\n        input_names=[\"x\", \"weight\", \"grad\", \"stats\"],\n        output_names=[\"dx\", \"dw\", \"db\"],\n        source=\"\"\"\n            uint group = threadgroup_position_in_grid.x;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint lane = thread_index_in_simdgroup;\n            uint row = group * R + simd;\n            float origin = row < N ? stats[row * 3] : 0;\n            float mean = row < N ? stats[row * 3 + 1] : 0;\n            float inv = row < N ? stats[row * 3 + 2] : 0;\n            float values[C], gradients[C], weights[C];\n            float sum_g = 0, sum_gx = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;\n                gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;\n                weights[i] = col < D ? weight[col] : 0;\n                sum_g += gradients[i] * weights[i];\n                sum_gx += gradients[i] * weights[i] * values[i];\n            }\n            sum_g = simd_sum(sum_g) / D;\n            sum_gx = simd_sum(sum_gx) / D * inv * inv;\n            threadgroup float partial_w[R * D];\n            threadgroup float partial_b[R * D];\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    if (row < N) {\n                        dx[row * D + col] = inv * (\n                            gradients[i] * weights[i] - sum_g - values[i] * sum_gx);\n                    }\n                    partial_w[simd * D + col] = gradients[i] * values[i] * inv;\n                    partial_b[simd * D + col] = gradients[i];\n                }\n            }\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            for (uint col = thread_position_in_threadgroup.x; col < D; col += R * 32) {\n                float w = 0, b = 0;\n                for (uint r = 0; r < R; ++r) {\n                    w += partial_w[r * D + col];\n                    b += partial_b[r * D + col];\n                }\n                dw[group * D + col] = w;\n                db[group * D + col] = b;\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=32)\ndef _normalize(eps):\n    forward = _forward_kernel()\n    backward = _backward_kernel()\n\n    @mx.custom_function\n    def apply(x, weight, bias):\n        width = x.shape[-1]\n        count = x.size // width\n        return tuple(\n            forward(\n                inputs=[x, weight, bias, mx.array(eps)],\n                template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32)],\n                output_shapes=[x.shape, (count, 3)],\n                output_dtypes=[mx.float32] * 2,\n                grid=(((count + 3) // 4) * 128, 1, 1),\n                threadgroup=(128, 1, 1),\n            )\n        )\n\n    @apply.vjp\n    def vjp(primals, cotangent, output):\n        x, weight, _bias = primals\n        width = x.shape[-1]\n        count = x.size // width\n        # Keep the two shared partial buffers within 32 KiB. More rows per\n        # group reduce the weight and bias gradients written to device memory.\n        rows = 16 if width <= 256 else 8\n        groups = (count + rows - 1) // rows\n        dx, dw, db = backward(\n            inputs=[x, weight, cotangent[0], output[1]],\n            template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32), (\"R\", rows)],\n            output_shapes=[x.shape, (groups, width), (groups, width)],\n            output_dtypes=[mx.float32] * 3,\n            grid=(groups * rows * 32, 1, 1),\n            threadgroup=(rows * 32, 1, 1),\n        )\n        dw, db = _reduce_kernel()(inputs=[dw, db], template=[(\"G\", groups), (\"D\", width), (\"S\", 1)], output_shapes=[(width,), (width,)], output_dtypes=[mx.float32] * 2, grid=(((width + 31) // 32) * 1 * 32, 1, 1), threadgroup=(1 * 32, 1, 1))\n        return dx, dw, db\n\n    # Row statistics are private outputs used only by the backward pass.\n    return lambda x, weight, bias: apply(x, weight, bias)[0]\n\n\nclass LayerNorm(nn.LayerNorm):\n    \"\"\"Normalize float32 rows on Metal while keeping MLX's checkpoint layout.\"\"\"\n\n    def __call__(self, x):\n        weight, bias = self.get(\"weight\"), self.get(\"bias\")\n        if (\n            mx.default_device() == mx.gpu\n            and mx.metal.is_available()\n            and x.ndim > 0\n            and x.size > 0\n            and 1 <= x.shape[-1] <= 512\n            and weight is not None\n            and bias is not None\n            and x.dtype == weight.dtype == bias.dtype == mx.float32\n        ):\n            return _normalize(self.eps)(x, weight, bias)\n        return super().__call__(x)\n\n@lru_cache(maxsize=1)\ndef _reduce_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_both_gradients\",\n        input_names=[\"partial_w\", \"partial_b\"],\n        output_names=[\"dw\", \"db\"],\n        source=\"\"\"\n            uint lane = thread_index_in_simdgroup;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint col = threadgroup_position_in_grid.x * 32 + lane;\n            float w = 0, b = 0;\n            for (uint row = simd; row < G; row += S) {\n                if (col < D) {\n                    w += partial_w[row * D + col];\n                    b += partial_b[row * D + col];\n                }\n            }\n            threadgroup float ws[S * 32], bs[S * 32];\n            ws[simd * 32 + lane] = w;\n            bs[simd * 32 + lane] = b;\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            if (simd == 0 && col < D) {\n                w = 0; b = 0;\n                for (uint s = 0; s < S; ++s) {\n                    w += ws[s * 32 + lane];\n                    b += bs[s * 32 + lane];\n                }\n                dw[col] = w;\n                db[col] = b;\n            }\n        \"\"\",\n    )\n",
+      "sha256": "80c4f1709b093431f99510b39f9a1c83d04c97f20cac5f661d13bdc937aea1e0"
+    },
+    "fused2": {
+      "source": "\"\"\"LayerNorm with saved row statistics and grouped gradients on Metal.\"\"\"\n\nfrom functools import lru_cache\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\n\n@lru_cache(maxsize=1)\ndef _forward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_forward\",\n        input_names=[\"x\", \"weight\", \"bias\", \"epsilon\"],\n        output_names=[\"out\", \"stats\"],\n        source=\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            // Shift before summing to preserve small differences in nearly\n            // constant rows. Save the origin and shifted mean separately.\n            float origin = x[row * D];\n            float values[C], mean = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? x[row * D + col] - origin : 0;\n                mean += values[i];\n            }\n            mean = simd_sum(mean) / D;\n            float variance = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? values[i] - mean : 0;\n                variance += values[i] * values[i];\n            }\n            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);\n            if (lane == 0) {\n                stats[row * 3] = origin;\n                stats[row * 3 + 1] = mean;\n                stats[row * 3 + 2] = inv;\n            }\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];\n                }\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=1)\ndef _backward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_saved_vjp\",\n        input_names=[\"x\", \"weight\", \"grad\", \"stats\"],\n        output_names=[\"dx\", \"dw\", \"db\"],\n        source=\"\"\"\n            uint group = threadgroup_position_in_grid.x;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint lane = thread_index_in_simdgroup;\n            uint row = group * R + simd;\n            float origin = row < N ? stats[row * 3] : 0;\n            float mean = row < N ? stats[row * 3 + 1] : 0;\n            float inv = row < N ? stats[row * 3 + 2] : 0;\n            float values[C], gradients[C], weights[C];\n            float sum_g = 0, sum_gx = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;\n                gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;\n                weights[i] = col < D ? weight[col] : 0;\n                sum_g += gradients[i] * weights[i];\n                sum_gx += gradients[i] * weights[i] * values[i];\n            }\n            sum_g = simd_sum(sum_g) / D;\n            sum_gx = simd_sum(sum_gx) / D * inv * inv;\n            threadgroup float partial_w[R * D];\n            threadgroup float partial_b[R * D];\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    if (row < N) {\n                        dx[row * D + col] = inv * (\n                            gradients[i] * weights[i] - sum_g - values[i] * sum_gx);\n                    }\n                    partial_w[simd * D + col] = gradients[i] * values[i] * inv;\n                    partial_b[simd * D + col] = gradients[i];\n                }\n            }\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            for (uint col = thread_position_in_threadgroup.x; col < D; col += R * 32) {\n                float w = 0, b = 0;\n                for (uint r = 0; r < R; ++r) {\n                    w += partial_w[r * D + col];\n                    b += partial_b[r * D + col];\n                }\n                dw[group * D + col] = w;\n                db[group * D + col] = b;\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=32)\ndef _normalize(eps):\n    forward = _forward_kernel()\n    backward = _backward_kernel()\n\n    @mx.custom_function\n    def apply(x, weight, bias):\n        width = x.shape[-1]\n        count = x.size // width\n        return tuple(\n            forward(\n                inputs=[x, weight, bias, mx.array(eps)],\n                template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32)],\n                output_shapes=[x.shape, (count, 3)],\n                output_dtypes=[mx.float32] * 2,\n                grid=(((count + 3) // 4) * 128, 1, 1),\n                threadgroup=(128, 1, 1),\n            )\n        )\n\n    @apply.vjp\n    def vjp(primals, cotangent, output):\n        x, weight, _bias = primals\n        width = x.shape[-1]\n        count = x.size // width\n        # Keep the two shared partial buffers within 32 KiB. More rows per\n        # group reduce the weight and bias gradients written to device memory.\n        rows = 16 if width <= 256 else 8\n        groups = (count + rows - 1) // rows\n        dx, dw, db = backward(\n            inputs=[x, weight, cotangent[0], output[1]],\n            template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32), (\"R\", rows)],\n            output_shapes=[x.shape, (groups, width), (groups, width)],\n            output_dtypes=[mx.float32] * 3,\n            grid=(groups * rows * 32, 1, 1),\n            threadgroup=(rows * 32, 1, 1),\n        )\n        dw, db = _reduce_kernel()(inputs=[dw, db], template=[(\"G\", groups), (\"D\", width), (\"S\", 2)], output_shapes=[(width,), (width,)], output_dtypes=[mx.float32] * 2, grid=(((width + 31) // 32) * 2 * 32, 1, 1), threadgroup=(2 * 32, 1, 1))\n        return dx, dw, db\n\n    # Row statistics are private outputs used only by the backward pass.\n    return lambda x, weight, bias: apply(x, weight, bias)[0]\n\n\nclass LayerNorm(nn.LayerNorm):\n    \"\"\"Normalize float32 rows on Metal while keeping MLX's checkpoint layout.\"\"\"\n\n    def __call__(self, x):\n        weight, bias = self.get(\"weight\"), self.get(\"bias\")\n        if (\n            mx.default_device() == mx.gpu\n            and mx.metal.is_available()\n            and x.ndim > 0\n            and x.size > 0\n            and 1 <= x.shape[-1] <= 512\n            and weight is not None\n            and bias is not None\n            and x.dtype == weight.dtype == bias.dtype == mx.float32\n        ):\n            return _normalize(self.eps)(x, weight, bias)\n        return super().__call__(x)\n\n@lru_cache(maxsize=1)\ndef _reduce_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_both_gradients\",\n        input_names=[\"partial_w\", \"partial_b\"],\n        output_names=[\"dw\", \"db\"],\n        source=\"\"\"\n            uint lane = thread_index_in_simdgroup;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint col = threadgroup_position_in_grid.x * 32 + lane;\n            float w = 0, b = 0;\n            for (uint row = simd; row < G; row += S) {\n                if (col < D) {\n                    w += partial_w[row * D + col];\n                    b += partial_b[row * D + col];\n                }\n            }\n            threadgroup float ws[S * 32], bs[S * 32];\n            ws[simd * 32 + lane] = w;\n            bs[simd * 32 + lane] = b;\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            if (simd == 0 && col < D) {\n                w = 0; b = 0;\n                for (uint s = 0; s < S; ++s) {\n                    w += ws[s * 32 + lane];\n                    b += bs[s * 32 + lane];\n                }\n                dw[col] = w;\n                db[col] = b;\n            }\n        \"\"\",\n    )\n",
+      "sha256": "8fdceed1bade3727bb05cf7fe240ce15ef82694f64a8ae76b49309884fcd171f"
+    },
+    "fused4": {
+      "source": "\"\"\"LayerNorm with saved row statistics and grouped gradients on Metal.\"\"\"\n\nfrom functools import lru_cache\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\n\n@lru_cache(maxsize=1)\ndef _forward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_forward\",\n        input_names=[\"x\", \"weight\", \"bias\", \"epsilon\"],\n        output_names=[\"out\", \"stats\"],\n        source=\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            // Shift before summing to preserve small differences in nearly\n            // constant rows. Save the origin and shifted mean separately.\n            float origin = x[row * D];\n            float values[C], mean = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? x[row * D + col] - origin : 0;\n                mean += values[i];\n            }\n            mean = simd_sum(mean) / D;\n            float variance = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? values[i] - mean : 0;\n                variance += values[i] * values[i];\n            }\n            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);\n            if (lane == 0) {\n                stats[row * 3] = origin;\n                stats[row * 3 + 1] = mean;\n                stats[row * 3 + 2] = inv;\n            }\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];\n                }\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=1)\ndef _backward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_saved_vjp\",\n        input_names=[\"x\", \"weight\", \"grad\", \"stats\"],\n        output_names=[\"dx\", \"dw\", \"db\"],\n        source=\"\"\"\n            uint group = threadgroup_position_in_grid.x;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint lane = thread_index_in_simdgroup;\n            uint row = group * R + simd;\n            float origin = row < N ? stats[row * 3] : 0;\n            float mean = row < N ? stats[row * 3 + 1] : 0;\n            float inv = row < N ? stats[row * 3 + 2] : 0;\n            float values[C], gradients[C], weights[C];\n            float sum_g = 0, sum_gx = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;\n                gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;\n                weights[i] = col < D ? weight[col] : 0;\n                sum_g += gradients[i] * weights[i];\n                sum_gx += gradients[i] * weights[i] * values[i];\n            }\n            sum_g = simd_sum(sum_g) / D;\n            sum_gx = simd_sum(sum_gx) / D * inv * inv;\n            threadgroup float partial_w[R * D];\n            threadgroup float partial_b[R * D];\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    if (row < N) {\n                        dx[row * D + col] = inv * (\n                            gradients[i] * weights[i] - sum_g - values[i] * sum_gx);\n                    }\n                    partial_w[simd * D + col] = gradients[i] * values[i] * inv;\n                    partial_b[simd * D + col] = gradients[i];\n                }\n            }\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            for (uint col = thread_position_in_threadgroup.x; col < D; col += R * 32) {\n                float w = 0, b = 0;\n                for (uint r = 0; r < R; ++r) {\n                    w += partial_w[r * D + col];\n                    b += partial_b[r * D + col];\n                }\n                dw[group * D + col] = w;\n                db[group * D + col] = b;\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=32)\ndef _normalize(eps):\n    forward = _forward_kernel()\n    backward = _backward_kernel()\n\n    @mx.custom_function\n    def apply(x, weight, bias):\n        width = x.shape[-1]\n        count = x.size // width\n        return tuple(\n            forward(\n                inputs=[x, weight, bias, mx.array(eps)],\n                template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32)],\n                output_shapes=[x.shape, (count, 3)],\n                output_dtypes=[mx.float32] * 2,\n                grid=(((count + 3) // 4) * 128, 1, 1),\n                threadgroup=(128, 1, 1),\n            )\n        )\n\n    @apply.vjp\n    def vjp(primals, cotangent, output):\n        x, weight, _bias = primals\n        width = x.shape[-1]\n        count = x.size // width\n        # Keep the two shared partial buffers within 32 KiB. More rows per\n        # group reduce the weight and bias gradients written to device memory.\n        rows = 16 if width <= 256 else 8\n        groups = (count + rows - 1) // rows\n        dx, dw, db = backward(\n            inputs=[x, weight, cotangent[0], output[1]],\n            template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32), (\"R\", rows)],\n            output_shapes=[x.shape, (groups, width), (groups, width)],\n            output_dtypes=[mx.float32] * 3,\n            grid=(groups * rows * 32, 1, 1),\n            threadgroup=(rows * 32, 1, 1),\n        )\n        dw, db = _reduce_kernel()(inputs=[dw, db], template=[(\"G\", groups), (\"D\", width), (\"S\", 4)], output_shapes=[(width,), (width,)], output_dtypes=[mx.float32] * 2, grid=(((width + 31) // 32) * 4 * 32, 1, 1), threadgroup=(4 * 32, 1, 1))\n        return dx, dw, db\n\n    # Row statistics are private outputs used only by the backward pass.\n    return lambda x, weight, bias: apply(x, weight, bias)[0]\n\n\nclass LayerNorm(nn.LayerNorm):\n    \"\"\"Normalize float32 rows on Metal while keeping MLX's checkpoint layout.\"\"\"\n\n    def __call__(self, x):\n        weight, bias = self.get(\"weight\"), self.get(\"bias\")\n        if (\n            mx.default_device() == mx.gpu\n            and mx.metal.is_available()\n            and x.ndim > 0\n            and x.size > 0\n            and 1 <= x.shape[-1] <= 512\n            and weight is not None\n            and bias is not None\n            and x.dtype == weight.dtype == bias.dtype == mx.float32\n        ):\n            return _normalize(self.eps)(x, weight, bias)\n        return super().__call__(x)\n\n@lru_cache(maxsize=1)\ndef _reduce_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_both_gradients\",\n        input_names=[\"partial_w\", \"partial_b\"],\n        output_names=[\"dw\", \"db\"],\n        source=\"\"\"\n            uint lane = thread_index_in_simdgroup;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint col = threadgroup_position_in_grid.x * 32 + lane;\n            float w = 0, b = 0;\n            for (uint row = simd; row < G; row += S) {\n                if (col < D) {\n                    w += partial_w[row * D + col];\n                    b += partial_b[row * D + col];\n                }\n            }\n            threadgroup float ws[S * 32], bs[S * 32];\n            ws[simd * 32 + lane] = w;\n            bs[simd * 32 + lane] = b;\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            if (simd == 0 && col < D) {\n                w = 0; b = 0;\n                for (uint s = 0; s < S; ++s) {\n                    w += ws[s * 32 + lane];\n                    b += bs[s * 32 + lane];\n                }\n                dw[col] = w;\n                db[col] = b;\n            }\n        \"\"\",\n    )\n",
+      "sha256": "1b28cf3fa72cbe131700658469b7dae42d6be84a6de04a72d264d15173eb1fd1"
+    },
+    "fused8": {
+      "source": "\"\"\"LayerNorm with saved row statistics and grouped gradients on Metal.\"\"\"\n\nfrom functools import lru_cache\n\nimport mlx.core as mx\nimport mlx.nn as nn\n\n\n@lru_cache(maxsize=1)\ndef _forward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_forward\",\n        input_names=[\"x\", \"weight\", \"bias\", \"epsilon\"],\n        output_names=[\"out\", \"stats\"],\n        source=\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            // Shift before summing to preserve small differences in nearly\n            // constant rows. Save the origin and shifted mean separately.\n            float origin = x[row * D];\n            float values[C], mean = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? x[row * D + col] - origin : 0;\n                mean += values[i];\n            }\n            mean = simd_sum(mean) / D;\n            float variance = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = col < D ? values[i] - mean : 0;\n                variance += values[i] * values[i];\n            }\n            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);\n            if (lane == 0) {\n                stats[row * 3] = origin;\n                stats[row * 3 + 1] = mean;\n                stats[row * 3 + 2] = inv;\n            }\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];\n                }\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=1)\ndef _backward_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_saved_vjp\",\n        input_names=[\"x\", \"weight\", \"grad\", \"stats\"],\n        output_names=[\"dx\", \"dw\", \"db\"],\n        source=\"\"\"\n            uint group = threadgroup_position_in_grid.x;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint lane = thread_index_in_simdgroup;\n            uint row = group * R + simd;\n            float origin = row < N ? stats[row * 3] : 0;\n            float mean = row < N ? stats[row * 3 + 1] : 0;\n            float inv = row < N ? stats[row * 3 + 2] : 0;\n            float values[C], gradients[C], weights[C];\n            float sum_g = 0, sum_gx = 0;\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;\n                gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;\n                weights[i] = col < D ? weight[col] : 0;\n                sum_g += gradients[i] * weights[i];\n                sum_gx += gradients[i] * weights[i] * values[i];\n            }\n            sum_g = simd_sum(sum_g) / D;\n            sum_gx = simd_sum(sum_gx) / D * inv * inv;\n            threadgroup float partial_w[R * D];\n            threadgroup float partial_b[R * D];\n            for (uint i = 0; i < C; ++i) {\n                uint col = lane + i * 32;\n                if (col < D) {\n                    if (row < N) {\n                        dx[row * D + col] = inv * (\n                            gradients[i] * weights[i] - sum_g - values[i] * sum_gx);\n                    }\n                    partial_w[simd * D + col] = gradients[i] * values[i] * inv;\n                    partial_b[simd * D + col] = gradients[i];\n                }\n            }\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            for (uint col = thread_position_in_threadgroup.x; col < D; col += R * 32) {\n                float w = 0, b = 0;\n                for (uint r = 0; r < R; ++r) {\n                    w += partial_w[r * D + col];\n                    b += partial_b[r * D + col];\n                }\n                dw[group * D + col] = w;\n                db[group * D + col] = b;\n            }\n        \"\"\",\n    )\n\n\n@lru_cache(maxsize=32)\ndef _normalize(eps):\n    forward = _forward_kernel()\n    backward = _backward_kernel()\n\n    @mx.custom_function\n    def apply(x, weight, bias):\n        width = x.shape[-1]\n        count = x.size // width\n        return tuple(\n            forward(\n                inputs=[x, weight, bias, mx.array(eps)],\n                template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32)],\n                output_shapes=[x.shape, (count, 3)],\n                output_dtypes=[mx.float32] * 2,\n                grid=(((count + 3) // 4) * 128, 1, 1),\n                threadgroup=(128, 1, 1),\n            )\n        )\n\n    @apply.vjp\n    def vjp(primals, cotangent, output):\n        x, weight, _bias = primals\n        width = x.shape[-1]\n        count = x.size // width\n        # Keep the two shared partial buffers within 32 KiB. More rows per\n        # group reduce the weight and bias gradients written to device memory.\n        rows = 16 if width <= 256 else 8\n        groups = (count + rows - 1) // rows\n        dx, dw, db = backward(\n            inputs=[x, weight, cotangent[0], output[1]],\n            template=[(\"N\", count), (\"D\", width), (\"C\", (width + 31) // 32), (\"R\", rows)],\n            output_shapes=[x.shape, (groups, width), (groups, width)],\n            output_dtypes=[mx.float32] * 3,\n            grid=(groups * rows * 32, 1, 1),\n            threadgroup=(rows * 32, 1, 1),\n        )\n        dw, db = _reduce_kernel()(inputs=[dw, db], template=[(\"G\", groups), (\"D\", width), (\"S\", 8)], output_shapes=[(width,), (width,)], output_dtypes=[mx.float32] * 2, grid=(((width + 31) // 32) * 8 * 32, 1, 1), threadgroup=(8 * 32, 1, 1))\n        return dx, dw, db\n\n    # Row statistics are private outputs used only by the backward pass.\n    return lambda x, weight, bias: apply(x, weight, bias)[0]\n\n\nclass LayerNorm(nn.LayerNorm):\n    \"\"\"Normalize float32 rows on Metal while keeping MLX's checkpoint layout.\"\"\"\n\n    def __call__(self, x):\n        weight, bias = self.get(\"weight\"), self.get(\"bias\")\n        if (\n            mx.default_device() == mx.gpu\n            and mx.metal.is_available()\n            and x.ndim > 0\n            and x.size > 0\n            and 1 <= x.shape[-1] <= 512\n            and weight is not None\n            and bias is not None\n            and x.dtype == weight.dtype == bias.dtype == mx.float32\n        ):\n            return _normalize(self.eps)(x, weight, bias)\n        return super().__call__(x)\n\n@lru_cache(maxsize=1)\ndef _reduce_kernel():\n    return mx.fast.metal_kernel(\n        name=\"nanogpt_layer_norm_both_gradients\",\n        input_names=[\"partial_w\", \"partial_b\"],\n        output_names=[\"dw\", \"db\"],\n        source=\"\"\"\n            uint lane = thread_index_in_simdgroup;\n            uint simd = simdgroup_index_in_threadgroup;\n            uint col = threadgroup_position_in_grid.x * 32 + lane;\n            float w = 0, b = 0;\n            for (uint row = simd; row < G; row += S) {\n                if (col < D) {\n                    w += partial_w[row * D + col];\n                    b += partial_b[row * D + col];\n                }\n            }\n            threadgroup float ws[S * 32], bs[S * 32];\n            ws[simd * 32 + lane] = w;\n            bs[simd * 32 + lane] = b;\n            threadgroup_barrier(mem_flags::mem_threadgroup);\n            if (simd == 0 && col < D) {\n                w = 0; b = 0;\n                for (uint s = 0; s < S; ++s) {\n                    w += ws[s * 32 + lane];\n                    b += bs[s * 32 + lane];\n                }\n                dw[col] = w;\n                db[col] = b;\n            }\n        \"\"\",\n    )\n",
+      "sha256": "9742337cbb91bae459f9c0afe95e9f4b50b26ff145007887352b0a90d89e0efb"
+    }
+  },
+  "results": [
+    {
+      "variant": "reference",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.08083555692185958,
+      "repeat_ms": [
+        0.10432083314905564,
+        0.09348069317638874,
+        0.08083555692185958,
+        0.07844375135997932,
+        0.07456208268801372
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        2.288818359375e-05,
+        9.5367431640625e-06
+      ]
+    },
+    {
+      "variant": "packed",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.07976166593531768,
+      "repeat_ms": [
+        0.10763236011068027,
+        0.07477444441368182,
+        0.07829805370420218,
+        0.07976166593531768,
+        0.09055805703004201
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        2.288818359375e-05,
+        9.5367431640625e-06
+      ]
+    },
+    {
+      "variant": "fused1",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.07595277701814969,
+      "repeat_ms": [
+        0.1451634739836057,
+        0.07657124971350034,
+        0.07595277701814969,
+        0.07537930272519588,
+        0.07564361362407605
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        2.288818359375e-05,
+        1.52587890625e-05
+      ]
+    },
+    {
+      "variant": "fused2",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.07671916702141364,
+      "repeat_ms": [
+        0.09009125021596749,
+        0.07671916702141364,
+        0.07611750004192193,
+        0.07619680371135473,
+        0.08088708389550447
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        2.09808349609375e-05,
+        1.33514404296875e-05
+      ]
+    },
+    {
+      "variant": "fused4",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.09685555317749579,
+      "repeat_ms": [
+        0.08395930752158165,
+        0.09685555317749579,
+        0.09936944271127383,
+        0.0937877766167124,
+        0.10989791558434565
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        2.288818359375e-05,
+        1.1444091796875e-05
+      ]
+    },
+    {
+      "variant": "fused8",
+      "rows": 1024,
+      "width": 128,
+      "median_ms": 0.09034611284732819,
+      "repeat_ms": [
+        0.11156999971717596,
+        0.08552319680651028,
+        0.08111125013480584,
+        0.09034611284732819,
+        0.13258930761367083
+      ],
+      "gradient_max_abs_errors": [
+        9.5367431640625e-07,
+        1.9073486328125e-05,
+        1.1444091796875e-05
+      ]
+    },
+    {
+      "variant": "reference",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.1058375012750427,
+      "repeat_ms": [
+        0.1058375012750427,
+        0.11598027621706326,
+        0.1044197225322326,
+        0.08805028007676204,
+        0.10600291658192873
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        2.288818359375e-05,
+        1.52587890625e-05
+      ]
+    },
+    {
+      "variant": "packed",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.11908944385747115,
+      "repeat_ms": [
+        0.14206125090519586,
+        0.12106611082951228,
+        0.10814514011144638,
+        0.1007881931339701,
+        0.11908944385747115
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        2.288818359375e-05,
+        1.52587890625e-05
+      ]
+    },
+    {
+      "variant": "fused1",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.11879666708409786,
+      "repeat_ms": [
+        0.14582249956826368,
+        0.12578013663490614,
+        0.11191791544357936,
+        0.11355222202837467,
+        0.11879666708409786
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        4.57763671875e-05,
+        4.57763671875e-05
+      ]
+    },
+    {
+      "variant": "fused2",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.12007735980053742,
+      "repeat_ms": [
+        0.1593404170125723,
+        0.12222055345773697,
+        0.12007735980053742,
+        0.11744527767101924,
+        0.11210430723925431
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        2.6702880859375e-05,
+        3.0517578125e-05
+      ]
+    },
+    {
+      "variant": "fused4",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.12318791666378577,
+      "repeat_ms": [
+        0.1471465267241001,
+        0.09981763704369466,
+        0.10777736237893502,
+        0.13132014001409212,
+        0.12318791666378577
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        3.0517578125e-05,
+        3.0517578125e-05
+      ]
+    },
+    {
+      "variant": "fused8",
+      "rows": 2048,
+      "width": 256,
+      "median_ms": 0.1010518070931236,
+      "repeat_ms": [
+        0.17717347325136265,
+        0.10576708397517602,
+        0.09608402693023284,
+        0.0973825001468261,
+        0.1010518070931236
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        3.0517578125e-05,
+        2.288818359375e-05
+      ]
+    },
+    {
+      "variant": "reference",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.1145284731561939,
+      "repeat_ms": [
+        0.1567594427615404,
+        0.11961264070123434,
+        0.1145284731561939,
+        0.11164360990126927,
+        0.11287166581799586
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        2.288818359375e-05,
+        2.288818359375e-05
+      ]
+    },
+    {
+      "variant": "packed",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.1310311102618774,
+      "repeat_ms": [
+        0.16684805663923422,
+        0.13186861295253038,
+        0.1310311102618774,
+        0.1191004179418087,
+        0.1244604168459773
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        2.288818359375e-05,
+        2.288818359375e-05
+      ]
+    },
+    {
+      "variant": "fused1",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.15655166624734798,
+      "repeat_ms": [
+        0.19255013670772314,
+        0.16220930653313795,
+        0.15655166624734798,
+        0.1529981925462683,
+        0.15596527606248856
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        6.866455078125e-05,
+        7.2479248046875e-05
+      ]
+    },
+    {
+      "variant": "fused2",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.1373669427509109,
+      "repeat_ms": [
+        0.17430166713893414,
+        0.1373669427509109,
+        0.13852889028688273,
+        0.13577194729199013,
+        0.1343416670958201
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        3.4332275390625e-05,
+        3.4332275390625e-05
+      ]
+    },
+    {
+      "variant": "fused4",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.14140861419339976,
+      "repeat_ms": [
+        0.18060694603870311,
+        0.13796583283692598,
+        0.1616484702875217,
+        0.13295347026238838,
+        0.14140861419339976
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        3.0517578125e-05,
+        2.6702880859375e-05
+      ]
+    },
+    {
+      "variant": "fused8",
+      "rows": 2048,
+      "width": 384,
+      "median_ms": 0.11835610959678888,
+      "repeat_ms": [
+        0.1535541657358408,
+        0.11740833210448424,
+        0.11140305238465469,
+        0.11835610959678888,
+        0.11929236352443695
+      ],
+      "gradient_max_abs_errors": [
+        1.9073486328125e-06,
+        3.0517578125e-05,
+        2.288818359375e-05
+      ]
+    }
+  ],
+  "method": {
+    "scope": "Isolated LayerNorm forward and all gradients",
+    "warmup": 20,
+    "steps": 300,
+    "repeats": 5,
+    "queue": 2,
+    "memory_gib": 2
+  }
+}

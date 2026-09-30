@@ -21,6 +21,7 @@ from .config import ModelConfig, TrainConfig
 from .data import Dataset, decode, encode
 from .gradients import clip_grad_norm
 from .model import GPT, loss_fn
+from .updates import update_parameters
 
 
 def select_device(device: str = "auto", memory_gb: float = 2.0) -> str:
@@ -133,7 +134,7 @@ def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
         grads = tree_map(lambda grad: grad / accumulation, total_grads)
         grads, norm = clip_grad_norm(grads, grad_clip)
         optimizer.learning_rate = rate
-        optimizer.update(model, grads)
+        update_parameters(model, optimizer, grads)
         return total_loss / accumulation, norm
 
     return TrainStep(compiled_step, state)

@@ -1130,3 +1130,96 @@ uv run python scripts/compare_sampling.py --baseline-ref 7f741e3 \
 
 The short-output, fresh-process, and trained-checkpoint receipts embed
 their runner source. Use a new output file for each comparison.
+
+## Packed AdamW updates
+
+Source `8bff3c9` batches small float32 parameter arrays for one MLX AdamW
+update. Medium has 34 eligible arrays. The implementation packs parameters,
+gradients, and two moment arrays, then restores the original state tree
+through array views. Groups of at least 32 arrays use this path, with each
+array holding 1 to 1,024 values. Other parameter arrays use their regular
+updates. MLX supplies the AdamW formula, bias correction, and weight decay.
+Schedules use the previous step, and bias correction uses the next step.
+
+The [complete-training comparison](diagnostics/updates-8bff3c9-fresh.json)
+loads the prior engine from `2c7f63f`. All other training code is shared.
+It runs 12 alternating pairs with one fresh model per path, 20 warmup steps,
+and 100 timed steps. Both paths use the two-step queue, float32, and a
+2 GiB memory/cache budget on the M4 Max with MLX 0.32.3. Timing includes
+host batches, forward and backward work, clipping, AdamW, and completion.
+
+| Medium comparison | Measured result |
+| --- | ---: |
+| Median paired throughput change | +0.81% |
+| Total-time throughput change | +1.74% |
+| Pairs with a gain | 9 / 12 |
+| Peak active MLX memory, reference / updated | 1,886.4 / 1,761.5 MiB |
+| Peak active MLX memory saved | 124.9 MiB |
+
+An earlier [longer prototype comparison](diagnostics/updates-experiment-packed-adamw-long.json)
+used 16 fresh pairs with 100 warmup and 300 timed steps per path at 2 GiB.
+It measured +0.48% median throughput,
++0.53% from total time, and 11 / 16 pairs with a gain.
+The small speed gain varies across pairs. The repeated memory reduction is
+larger: about 6.6% of peak active MLX allocation.
+These figures cover the medium workload and this machine.
+
+The separate [standard receipt](results/8bff3c9-gpu.json) uses three fresh
+trials, 20 warmup steps, and 100 timed steps. It records 44,562 bytes/s,
+-2.6% versus the prior medium time-series point at `1203504`,
+and 1,761.5 MiB peak MLX memory. The page keeps
+that observed value. The adjacent reference/candidate pairs give a closer
+estimate of the update's effect while machine timing varies.
+
+### State and learning checks
+
+All 363 CPU and Metal tests pass. Eleven update checks cover eager and
+compiled math, bias correction, learning-rate schedules, scalar and strided
+inputs, empty arrays, dtype and device paths, other optimizers, state
+restoration, and real checkpoint files. Synthetic parameter and moment
+values match MLX exactly. A six-step training check covers saving and
+resuming the packed state.
+
+The [story comparison](learning/updates-8bff3c9-paired.json) runs medium for
+100 steps with seeds 11, 29, and 1337. It uses the bundled story with an
+80/20 training/validation split, four validation batches every 20 steps,
+and the same settings for both paths. Validation loss differs by at most
+0.00000072 nats. Final weights differ by at most 0.00000036, optimizer
+state by at most 0.00000020, and saved random state matches exactly.
+The receipt includes every logged result, checkpoint comparison, and runner.
+
+### Experiments that led here
+
+The [component profile](diagnostics/training-components-7fec185.json)
+measures compiled forward and parameter/input gradients on fixed inputs.
+It helped select experiments; its component times are separate measurements.
+The [LayerNorm sweep](diagnostics/updates-experiment-normalization-micro.json)
+compares a shared MLX reduction and four Metal reduction layouts, with
+gradient checks. Complete-training experiments followed:
+
+| Prototype, eight fresh pairs | Tiny median | Small median | Medium median |
+| --- | ---: | ---: | ---: |
+| [Shared LayerNorm reduction](diagnostics/updates-experiment-normalization-packed.json) | -1.54% | -1.08% | -0.26% |
+| [Fused LayerNorm reduction](diagnostics/updates-experiment-normalization-fused.json) | -8.05% | +0.29% | +0.12% |
+| [Packed AdamW for every preset](diagnostics/updates-experiment-packed-adamw.json) | +1.71% | -0.27% | +0.70% |
+| [Direct Metal clipping and AdamW](diagnostics/updates-experiment-grouped-adamw.json) | +3.74% | +0.74% | -0.13% |
+
+These probes use 20 warmup and 100 timed steps per fresh path at 2 GiB.
+Tiny had wide timing swings. Its direct Metal optimizer experiment measured
++3.74% by median paired ratio and -5.55% by total time. The packed medium
+update received the longer confirmation and the committed-source comparison
+above. Each prototype receipt embeds its runner and candidate source. Replay
+those runners from their recorded source commit with fresh output paths.
+Benchmark processes ran in sequence. Source hashes, reference hashes, raw
+timing counts, rates, paired ratios, aggregate ratios, and memory values were audited.
+
+Repeat the final comparison from `8bff3c9`:
+
+```bash
+uv run python scripts/compare_training.py --baseline-ref 2c7f63f \
+  --preset medium --pairs 12 --steps 100 --warmup 20 --queued --fresh \
+  --memory-gb 2 --out medium-updates.json
+uv run nanogpt benchmark --preset medium --device gpu \
+  --steps 100 --warmup 20 --repeats 3 --memory-gb 2 \
+  --out medium-standard.json
+```
