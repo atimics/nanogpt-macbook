@@ -219,3 +219,74 @@ every step. These gains are modest, especially for small. Standard peak
 memory fell by 1.6 MiB for tiny, 10.2 MiB for small, and 12.2 MiB for medium.
 The [learning check](learning/demo-231140f.json) reached validation loss
 2.1712095 after 300 steps, matching the prior 2.1712059 to four decimal places.
+
+## Attention score gradients
+
+Commit `ddb8a6f` combines the attention score-gradient matrix product and
+softmax derivative in one Metal kernel. It calculates the row reduction from
+the saved attention output. Masked matrix products skip complete blocks above
+the causal boundary. The path covers float32 tensors with matching batch/head
+shapes, contexts from 256 to 512 in multiples of 32, and head widths from 32 to
+64 in multiples of eight. Small and medium use this path. Tiny uses the existing
+fused-softmax path.
+
+The standard protocol compares baseline `0898920` with `ddb8a6f`:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 395,332 | 388,234 | 142.6 / 142.6 MiB |
+| small / Metal | 144,809 | 157,647 | 1022.9 / 975.3 MiB |
+| medium / Metal | 52,966 | 57,027 | 2022.7 / 1882.4 MiB |
+
+The alternating comparison holds the rest of the current training code fixed
+and loads attention from the baseline commit. Both models receive the same
+seeded batches. Each path gets 20 warmup steps and 200 measured steps, with
+the order reversed each pair. This uses a 4 GiB memory/cache limit for two
+live models; the standard single-model runs use 2 GiB.
+
+```bash
+uv run python scripts/compare_attention.py --baseline-ref 0898920 \
+  --out benchmarks/diagnostics/my-attention.json
+```
+
+| Preset | Median change | Total-time change | Pairs with a gain |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | -0.7% | -0.5% | 85 / 200 |
+| small / Metal | +9.1% | +9.1% | 200 / 200 |
+| medium / Metal | +6.0% | +5.5% | 191 / 200 |
+
+The [paired receipt](diagnostics/attention-ddb8a6f-adjacent.json) records all
+steps, the baseline file hash, and both summaries. Tiny retains the same GPU
+operations; its measured difference shows timing variation between paths.
+Peak active memory fell by 47.6 MiB for small and 140.4 MiB for medium.
+
+Float32 operations are grouped differently in the new gradient. Compiled
+gradients match a float64 reference within `atol=5e-6, rtol=5e-5`; full-model
+gradients and three accumulated AdamW updates match native MLX within
+`atol=2e-6, rtol=2e-5`. Causal masking and checkpoint resume also pass.
+
+Small-model training on the bundled story was checked with three seeds. Each
+run uses the default preset, 300 steps, and ten validation batches every 100
+steps. The six receipts preserve each learning trace:
+
+| Seed | Baseline final validation loss | Updated final validation loss | Difference |
+| --- | ---: | ---: | ---: |
+| 1337 | [2.218576](learning/small-0898920-seed1337.json) | [2.257929](learning/small-ddb8a6f-seed1337.json) | +0.039353 |
+| 17 | [2.299735](learning/small-0898920-seed17.json) | [2.299945](learning/small-ddb8a6f-seed17.json) | +0.000210 |
+| 42 | [2.243085](learning/small-0898920-seed42.json) | [2.246769](learning/small-ddb8a6f-seed42.json) | +0.003683 |
+
+Both paths learn from initial loss around 5.6 nats. Their results agree within
+three millionths at step 100, then diverge with further updates. The updated
+final losses are slightly higher in all three runs. The CLI samples from the
+saved best checkpoint by default. Those checkpoints have these losses:
+
+| Seed | Baseline best step / loss | Updated best step / loss |
+| --- | ---: | ---: |
+| 1337 | 300 / 2.218576 | 200 / 2.207986 |
+| 17 | 200 / 2.197994 | 200 / 2.197998 |
+| 42 | 200 / 2.204283 | 200 / 2.204979 |
+
+These short runs on a
+4,544-byte story describe this training check; broader text quality needs a
+larger evaluation. The refreshed [tiny learning receipt](learning/demo-ddb8a6f.json)
+reaches 2.1712084 after 300 steps.

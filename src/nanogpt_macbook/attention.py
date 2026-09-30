@@ -1,4 +1,4 @@
-"""Causal training attention with fused float32 softmax on Metal."""
+"""Causal training attention with fused float32 kernels on Metal."""
 
 from functools import lru_cache
 
@@ -94,6 +94,95 @@ def _softmax(head_dim):
     return apply
 
 
+@lru_cache(maxsize=1)
+def _score_gradient_kernel():
+    # Four SIMD groups form an 8-query by 32-key tile. Matrix instructions
+    # calculate grad_output @ value.T, then each lane writes adjacent scores.
+    return mx.fast.metal_kernel(
+        name="nanogpt_attention_score_gradient",
+        input_names=["probs", "grad", "value", "delta"],
+        output_names=["scores_grad"],
+        header="#include <metal_simdgroup_matrix>\n",
+        source="""
+            uint simd = simdgroup_index_in_threadgroup;
+            uint query = threadgroup_position_in_grid.y * 8;
+            uint key = threadgroup_position_in_grid.x * 32 + simd * 8;
+            uint head = threadgroup_position_in_grid.z;
+            simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.f);
+            if (key <= query + 7) {
+                for (uint d = 0; d < D; d += 8) {
+                    simdgroup_float8x8 a, b;
+                    simdgroup_load(a, grad + (head * N + query) * D + d, D);
+                    simdgroup_load(b, value + (head * N + key) * D + d,
+                                   D, ulong2(0), true);
+                    simdgroup_multiply_accumulate(acc, a, b, acc);
+                }
+            }
+            threadgroup float tile[4 * 64];
+            simdgroup_store(acc, tile + simd * 64, 8);
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint i = thread_position_in_threadgroup.x; i < 256; i += 128) {
+                uint q = query + i / 32;
+                uint k = threadgroup_position_in_grid.x * 32 + i % 32;
+                uint index = (head * N + q) * N + k;
+                float dot = tile[(i % 32 / 8) * 64 + (i / 32) * 8 + i % 8];
+                scores_grad[index] = k <= q
+                    ? probs[index] * (dot - delta[head * N + q]) * rsqrt(float(D))
+                    : 0.f;
+            }
+        """,
+    )
+
+
+def _block_mask(length, block_size):
+    blocks = mx.arange((length + block_size - 1) // block_size)
+    return blocks[:, None] >= blocks[None, :]
+
+
+@lru_cache(maxsize=2)
+def _blocked_attention(block_size):
+    kernel = _score_gradient_kernel()
+
+    @mx.custom_function
+    def apply(q, k, v):
+        mask = _block_mask(q.shape[-2], block_size)
+        scores = mx.block_masked_mm(q, k.swapaxes(-1, -2), block_size=block_size, mask_out=mask)
+        probs = _softmax(q.shape[-1])(scores)
+        output = mx.block_masked_mm(probs, v, block_size=block_size, mask_lhs=mask)
+        # Keep probabilities as a private saved value for the gradient.
+        return output, probs
+
+    @apply.vjp
+    def vjp(primals, cotangents, outputs):
+        q, k, v = primals
+        grad = cotangents[0]
+        output, probs = outputs
+        length, width = q.shape[-2:]
+        # sum(grad_output * output) equals sum(grad_probs * probs) per row.
+        # This reduction uses the smaller head dimension.
+        delta = mx.sum(grad * output, axis=-1)
+        scores_grad = kernel(
+            inputs=[probs, grad, v, delta],
+            template=[("N", length), ("D", width)],
+            output_shapes=[probs.shape],
+            output_dtypes=[mx.float32],
+            grid=(length // 32 * 128, length // 8, q.size // (length * width)),
+            threadgroup=(128, 1, 1),
+        )[0]
+        mask = _block_mask(length, block_size)
+
+        def product(left, right, active):
+            return mx.block_masked_mm(left, right, block_size=block_size, mask_lhs=active)
+
+        return (
+            product(scores_grad, k, mask),
+            product(scores_grad.swapaxes(-1, -2), q, mask.T),
+            product(probs.swapaxes(-1, -2), grad, mask.T),
+        )
+
+    return lambda q, k, v: apply(q, k, v)[0]
+
+
 def training_attention(q, k, v):
     """Use fused softmax for the short, square float32 attention in our presets."""
     if (
@@ -102,6 +191,18 @@ def training_attention(q, k, v):
         and q.dtype == k.dtype == v.dtype == mx.float32
         and 1 < q.shape[-2] == k.shape[-2] == v.shape[-2] <= 512
     ):
+        length, width = q.shape[-2:]
+        # The matrix tiles cover complete rows and groups of eight head values.
+        # Longer preset contexts benefit from the masked matrix products.
+        if (
+            q.ndim == 4
+            and q.shape == k.shape == v.shape
+            and length >= 256
+            and length % 32 == 0
+            and 32 <= width <= 64
+            and width % 8 == 0
+        ):
+            return _blocked_attention(32 if length == 256 else 64)(q, k, v)
         probabilities = _softmax(q.shape[-1])(q @ k.swapaxes(-1, -2))
         return probabilities @ v
     return mx.fast.scaled_dot_product_attention(q, k, v, scale=q.shape[-1] ** -0.5, mask="causal")

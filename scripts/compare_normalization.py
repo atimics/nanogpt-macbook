@@ -1,4 +1,4 @@
-"""Compare native and grouped LayerNorm with alternating complete training steps."""
+"""Compare training implementations with alternating complete training steps."""
 
 import argparse
 import gc
@@ -18,6 +18,7 @@ import mlx.optimizers as optim
 import numpy as np
 
 from nanogpt_macbook import engine
+from nanogpt_macbook import model as model_module
 from nanogpt_macbook.benchmark import _step, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
@@ -32,6 +33,9 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
     if component == "clipping":
         target, attribute = engine, "clip_grad_norm"
         native, grouped = optim.clip_grad_norm, engine.clip_grad_norm
+    elif component == "attention":
+        target, attribute = model_module, "training_attention"
+        native, grouped = reference, model_module.training_attention
     else:
         target, attribute = LayerNorm, "__call__"
         native, grouped = reference or nn.LayerNorm.__call__, LayerNorm.__call__
@@ -90,26 +94,33 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
         "samples": samples,
         f"{after}_over_{before}_ratios": ratios,
         "median_ratio": statistics.median(ratios),
+        "aggregate_ratio": sum(
+            sum(sample["step_seconds"]) for sample in samples if sample["path"] == before
+        )
+        / sum(sum(sample["step_seconds"]) for sample in samples if sample["path"] == after),
+        "faster_pairs": sum(ratio > 1 for ratio in ratios),
     }
 
 
 def main(component="normalization"):
     parser = argparse.ArgumentParser(
-        description=f"Compare native and grouped {component} in complete training steps."
+        description=f"Compare {component} implementations in complete training steps."
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--preset", choices=(*PRESETS, "all"), default="all")
     parser.add_argument("--pairs", type=int, default=200)
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=20)
-    parser.add_argument("--baseline-ref", help="Use LayerNorm from this trusted local Git ref")
+    parser.add_argument("--baseline-ref", help=f"Use {component} from this trusted local Git ref")
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
     if args.out.exists():
         parser.error("Choose a new output path")
-    if args.baseline_ref and component != "normalization":
-        parser.error("A baseline ref applies to the normalization comparison")
+    if args.baseline_ref and component == "clipping":
+        parser.error("A baseline ref applies to normalization or attention")
+    if component == "attention" and not args.baseline_ref:
+        parser.error("Choose a baseline ref for the attention comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     reference = None
     reference_info = None
@@ -120,19 +131,22 @@ def main(component="normalization"):
             cwd=root,
             text=True,
         ).strip()
-        path = "src/nanogpt_macbook/normalization.py"
+        path = f"src/nanogpt_macbook/{component}.py"
         source = subprocess.check_output(["git", "show", f"{commit}:{path}"], cwd=root)
-        module = ModuleType("reference_normalization")
+        module = ModuleType(f"reference_{component}")
         exec(compile(source, f"{commit}:{path}", "exec"), module.__dict__)
-        reference = module.LayerNorm.__call__
+        reference = (
+            module.training_attention if component == "attention" else module.LayerNorm.__call__
+        )
         reference_info = {
             "commit": commit,
             "path": path,
             "sha256": hashlib.sha256(source).hexdigest(),
-            "scope": "Current training code with LayerNorm from this commit",
+            "scope": f"Current training code with {component} from this commit",
         }
     # Both compiled models stay alive during each comparison.
     select_device("gpu", 4)
+    operation = "layernorm" if component == "normalization" else component
     receipt = {
         "format": 1,
         "source": source_info(),
@@ -140,9 +154,7 @@ def main(component="normalization"):
         "chip": mx.device_info(mx.gpu)["device_name"],
         "mlx": mx.__version__,
         "method": {
-            "name": "alternating-clipping-v1"
-            if component == "clipping"
-            else "alternating-layernorm-v1",
+            "name": f"alternating-{operation}-v1",
             "pairs": args.pairs,
             "steps_per_path_per_pair": args.steps,
             "warmup_steps_per_path": args.warmup,
@@ -157,7 +169,7 @@ def main(component="normalization"):
     if reference_info:
         receipt["reference"] = reference_info
         receipt["method"].update(
-            name="alternating-layernorm-reference-v1",
+            name=f"alternating-{operation}-reference-v1",
             order="reference then updated on odd pairs; updated then reference on even pairs",
             summary="median of updated/reference throughput ratios across adjacent pairs",
         )
