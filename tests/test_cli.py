@@ -35,6 +35,7 @@ def test_cli_prepare_train_resume_sample(tmp_path):
         1,
         "--device",
         "cpu",
+        "--sync",
     )
     assert result.returncode == 0, result.stderr
     result = cli("resume", "--run", run, "--steps", 2, "--eval-batches", 1, "--device", "cpu")

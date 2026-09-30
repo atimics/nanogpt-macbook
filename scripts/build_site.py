@@ -35,10 +35,15 @@ def validate(receipt: dict):
     if not re.fullmatch(r"[0-9a-f]{64}", source.get("python_source_sha256", "")):
         raise ValueError("Published results need a source hash")
     method = receipt["method"]
-    if (method["name"], method["dtype"]) != ("training-step-v1", "float32") or method[
-        "execution"
-    ] not in ("eager", "compiled"):
+    protocol = (method["name"], method["execution"])
+    if method["dtype"] != "float32" or protocol not in (
+        ("training-step-v1", "eager"),
+        ("training-step-v1", "compiled"),
+        ("training-loop-v2", "pipelined"),
+    ):
         raise ValueError("Use the documented float32 benchmark protocol")
+    if method["execution"] == "pipelined" and method.get("queue_depth") != 2:
+        raise ValueError("The pipelined protocol uses two queued steps")
     # The page states these counts. Require them before publishing a comparison.
     if (method["steps"], method["warmup_steps"], method["repeats"]) != (100, 20, 3):
         raise ValueError("The site protocol uses 100 steps, 20 warmup steps, and 3 trials")

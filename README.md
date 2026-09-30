@@ -31,7 +31,11 @@ The first setup downloads Python packages. The commands then run locally.
 The source and benchmark site are public under the MIT-0 license. The benchmark
 page plots training speed across measured source commits, with raw timing data
 for each point. The training loop compiles gradients, clipping, and AdamW into
-one MLX step for higher throughput.
+one MLX step for higher throughput. Metal training queues up to two steps so
+the CPU can prepare work while the GPU runs. Every step's loss and gradient
+norm are checked. The queue finishes before reports, evaluation, and checkpoints.
+The queue uses more peak GPU memory. Use `--sync` with `train`, `resume`, or
+`benchmark` to wait after each step and reduce peak memory.
 
 The demo contains a short original story. A short run should reduce the loss
 and start to learn letters and word patterns. Use a larger, varied corpus and
@@ -91,7 +95,8 @@ reduce memory use. `--device cpu` provides a small CPU test on a supported Mac.
 
 ## Stop and resume
 
-Press **Ctrl+C** once to finish the current step and save. A time limit provides
+Press **Ctrl+C** once to finish the queued steps and save. Up to two submitted
+steps can finish after the request. A time limit provides
 a bounded session:
 
 ```bash

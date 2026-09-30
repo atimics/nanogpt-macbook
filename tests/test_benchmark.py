@@ -7,7 +7,8 @@ from nanogpt_macbook import benchmark as module
 from nanogpt_macbook.config import ModelConfig, TrainConfig
 
 
-def test_benchmark_records_recomputable_timings(tmp_path, monkeypatch):
+@pytest.mark.parametrize("pipeline", [False, True])
+def test_benchmark_records_recomputable_timings(tmp_path, monkeypatch, pipeline):
     monkeypatch.setitem(
         module.PRESETS,
         "tiny",
@@ -15,10 +16,19 @@ def test_benchmark_records_recomputable_timings(tmp_path, monkeypatch):
     )
     output = tmp_path / "result.json"
     result = module.benchmark(
-        output, ["tiny"], device="cpu", steps=3, warmup=1, repeats=2, report=lambda _: None
+        output,
+        ["tiny"],
+        device="cpu",
+        steps=3,
+        warmup=1,
+        repeats=2,
+        pipeline=pipeline,
+        report=lambda _: None,
     )
     assert json.loads(output.read_text()) == result
     assert result["environment"]["device"] == "cpu"
+    assert result["method"]["queue_depth"] == (2 if pipeline else 1)
+    assert result["method"]["execution"] == ("pipelined" if pipeline else "compiled")
     assert len(result["source"]["python_source_sha256"]) == 64
     row = result["results"][0]
     rates = []

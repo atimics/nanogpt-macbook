@@ -20,10 +20,12 @@ uv run nanogpt benchmark --preset tiny --device cpu \
 Each trial starts with a fresh model and optimizer, using seed 1337. Batches
 contain uniform random byte token IDs. Each step creates a batch on the host,
 runs the GPT, computes cross entropy and gradients, clips gradients, updates
-weights with AdamW, and waits for device work to finish. Weights and optimizer
+weights with AdamW, and checks the loss and gradient norm. Weights and optimizer
 state use float32. The first source commit uses eager MLX execution. Later
-commits compile the full training step. The receipt records the execution mode.
-Preset context and batch sizes apply.
+commits compile the full training step. Commit `29b81ad` queues up to two GPU
+steps, then waits for all device work before each trial ends. Earlier GPU
+commits and CPU runs wait after each step. The receipt records the execution
+mode. Preset context and batch sizes apply.
 
 Commit `17cb28a` adds fused Metal kernels for the attention softmax and its
 gradient. Its cache limit is 2 GiB, matching the allocator setting, so temporary
@@ -39,7 +41,12 @@ CPU training uses MLX's native derivative. Receipts record the activation path.
 Each trial warms up for 20 steps, then times 100 steps. We run three trials in
 sequence. Throughput is `batch * context * timed_steps / sum(step_seconds)`.
 The site shows the median trial throughput and the minimum-to-maximum trial
-range. Step time is the median of each trial's mean step time.
+range. Step time is the median of each trial's mean step time. The queued
+`training-loop-v2` protocol records the time between checked loss results in
+`step_seconds`, including the final device wait in the last interval. These
+intervals measure completion spacing. Their sum includes host batch creation,
+all GPU updates, every loss/norm check, and the final queue drain. The earlier
+`training-step-v1` intervals each include a complete synchronized step.
 
 Evaluation, checkpoint writes, model setup, and warmup sit outside the timer.
 The separate demo run measures actual training on text, with held-out loss.
@@ -60,8 +67,8 @@ timeline point is a source commit and one measured preset/device pair. The
 same model settings, software stack, seed, and trial counts apply across the
 timeline. Power state, temperature, and other apps can change results. Use
 the trial range when judging small differences. The execution mode changes
-with the compiled training step. The demo learning receipt checks training
-quality on a separate text run.
+with the compiled training step and the two-step queue. The demo learning
+receipt checks training quality on a separate text run.
 
 The `0eb0273` measurements are a fresh baseline taken before the `17cb28a`
 speed change. They ran in the same session with the same protocol. The Mac
@@ -358,3 +365,77 @@ occur at step 200. Packing changes the physical layout used by matrix
 operations, and small float32 differences grow over later updates. These
 short checks use a 455-byte validation split; broader text quality needs
 a larger evaluation. The receipts retain every reported value.
+
+## Two queued training steps
+
+Commit `29b81ad` queues up to two compiled GPU updates. Python can prepare the
+next batch while Metal works. Each loss and gradient norm is checked, and the
+queue finishes before reports, evaluation, checkpoints, and shutdown. Training
+and the standard GPU benchmark use the queue by default. `--sync` selects a
+wait after each step and reduces peak active memory.
+
+The fresh standard comparison uses `4566801` and `29b81ad`, with one model,
+a 2 GiB memory/cache limit, 20 warmup steps, and three 100-step trials:
+
+| Preset | Baseline bytes/s | Queued bytes/s | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 393,106 | 482,575 | 142.6 / 268.0 MiB |
+| small / Metal | 156,853 | 166,338 | 999.3 / 1546.4 MiB |
+| medium / Metal | 58,454 | 60,012 | 1884.2 / 1947.2 MiB |
+
+The current tiny CPU control records 24,386 bytes/s with per-step waits. CPU
+math uses the same path; its speed also reflects the conditions of this run.
+
+Tiny and small have separated trial ranges. Medium ranges overlap, with more
+variation in its queued run. The queue keeps more arrays active at once.
+Peak active memory rises by 125.4 MiB for tiny, 547.1 MiB for small, and
+63.0 MiB for medium. Raw results include every measured interval.
+
+For a closer speed comparison, alternate the two paths in ten-step blocks:
+
+```bash
+uv run python scripts/compare_pipeline.py --baseline-ref 4566801 \
+  --out benchmarks/diagnostics/my-training-queue.json
+```
+
+This diagnostic loads the reference compiled step from the trusted local
+commit. It uses the current model math for both paths, matching the reference
+commit's model math in this comparison. The receipt stores the reference file
+hash and source commit. Two models stay alive with a 4 GiB memory/cache limit.
+Each path gets 20 warmup steps, followed by 100 pairs of ten-step blocks.
+The order alternates each pair. Timings include batch creation, training,
+loss/norm checks, and all device work through each block's final wait.
+
+| Preset | Median speed gain | Total-time gain | Pairs with a gain |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | +25.0% | +24.9% | 100 / 100 |
+| small / Metal | +6.0% | +6.2% | 100 / 100 |
+| medium / Metal | +1.6% | +1.8% | 87 / 100 |
+
+The [paired receipt](diagnostics/pipeline-29b81ad-blocks.json) includes each
+completion interval and throughput ratio. The default training loop reports
+every ten steps, which also drains the queue at ten-step boundaries.
+
+Learning checks compare synchronous and queued training on the bundled story
+for 300 steps with the same float32 settings, batches, and learning rates:
+
+| Preset / seed | Synchronous final loss | Queued final loss | Difference |
+| --- | ---: | ---: | ---: |
+| tiny / 1337 | 2.1712080 | 2.1712108 | +0.0000029 |
+| small / 1337 | 2.2888015 | 2.2901658 | +0.0013643 |
+| small / 17 | 2.2982055 | 2.2966031 | -0.0016025 |
+| small / 42 | 2.2469623 | 2.2414097 | -0.0055527 |
+
+These are final held-out losses in nats. The largest absolute final difference
+for small is 0.0056; its best validation step is 200 in both modes for all three
+seeds. Floating-point results can vary as GPU execution changes. The paired
+receipts for [tiny](learning/pipeline-29b81ad-tiny-sync.json),
+[queued tiny](learning/pipeline-29b81ad-tiny-queued.json),
+[small 1337](learning/pipeline-29b81ad-small-sync.json),
+[queued small 1337](learning/pipeline-29b81ad-small-queued.json),
+[small 17](learning/pipeline-29b81ad-small-sync-seed17.json),
+[queued small 17](learning/pipeline-29b81ad-small-queued-seed17.json),
+[small 42](learning/pipeline-29b81ad-small-sync-seed42.json), and
+[queued small 42](learning/pipeline-29b81ad-small-queued-seed42.json)
+include all validation checkpoints. Focused tests also compare weights,
+optimizer state, batch RNG, accumulation, stop handling, and resume behavior.

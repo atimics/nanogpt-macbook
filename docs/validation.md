@@ -325,6 +325,31 @@ Three small-model story runs preserve their complete learning traces. The
 largest final loss change is +0.0278 nats at seed 1337. The report gives both
 final and best validation losses for all three seeds.
 
+## Two queued training steps — 2026-09-30
+
+Source `29b81ad` passed 205 tests on Apple M4 Max / MLX 0.32.3. The suite
+covers queued/synchronous update parity on CPU and GPU, gradient accumulation,
+changing learning rates, report/evaluation boundaries, optimizer and batch RNG
+restore, SIGINT/SIGTERM, time limits, and preservation of the last checkpoint
+after an error. Ruff checks and formatting pass. The site receipt checks and
+six JavaScript layout tests pass with 63 measured configurations.
+
+The standard GPU measurements compare `4566801` with `29b81ad`. The latter's
+source hash is `6e77572946aef11d0f67c60330b8fa769bec66fc08367a9b0d9ae8e19aa81ea5`.
+Both source trees were clean. The current CPU control is also recorded at
+`29b81ad`. Its median is 24,386 bytes/s.
+
+The alternating comparison ran 100 pairs of ten-step blocks with both models
+alive and a 4 GiB memory/cache limit. Median queued/reference speed gains are
+25.0% for tiny, 6.0% for small, and 1.6% for medium. Single-model peak active
+memory rises by 125.4, 547.1, and 63.0 MiB, respectively. `--sync` selects the
+lower-memory execution path. All timing sums include completed GPU work.
+
+The 300-step story learning comparison covers tiny seed 1337 and small seeds
+1337, 17, and 42. Final validation losses differ by 0.000003 for tiny and at
+most 0.0056 for small. The benchmark protocol includes the complete loss and
+memory tables and links every raw receipt.
+
 ## Results panel spacing, 30 September 2026
 
 The current 56-point page fits ordinary 320–1440 px browser widths. A smaller
