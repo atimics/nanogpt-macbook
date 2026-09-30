@@ -93,8 +93,8 @@ def test_sampling_compiles_full_gpu_windows_and_keeps_short_tails_eager(device, 
     original = mx.compile
     compiled_shapes = []
 
-    def checked_compile(function):
-        compiled = original(function)
+    def checked_compile(function, **kwargs):
+        compiled = original(function, **kwargs)
 
         def checked(inputs):
             compiled_shapes.append(inputs.shape)
@@ -191,3 +191,22 @@ def test_cached_sampling_short_outputs_and_repeated_calls(device, count, monkeyp
     monkeypatch.setattr(engine, "decode", lambda tokens: captured.extend(tokens) or decode(tokens))
     engine.generate(model, "Mira ", count, seed=55)
     assert captured == expected
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("context", [1, 16, 64])
+@pytest.mark.parametrize("count", [15, 16, 17, 65])
+def test_full_windows_preserve_bytes_and_random_state_at_queue_boundary(
+    device, context, count, monkeypatch
+):
+    select(device)
+    model = GPT(ModelConfig(context=context, layers=1, heads=2, width=32))
+    prompt = "世界 🌊 " * 12
+    expected = full_output_tokens(model, prompt, count, 0.8, 40, 101)
+    expected_random = np.array(mx.random.uniform(shape=(10,)))
+    captured = []
+    monkeypatch.setattr(engine, "decode", lambda tokens: captured.extend(tokens) or decode(tokens))
+    actual = engine.generate(model, prompt, count, 0.8, 40, 101)
+    assert captured == expected
+    assert actual == prompt + decode(expected)
+    np.testing.assert_array_equal(np.array(mx.random.uniform(shape=(10,))), expected_random)

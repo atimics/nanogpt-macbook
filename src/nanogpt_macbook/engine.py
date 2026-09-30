@@ -361,6 +361,24 @@ def _sample_prefix(model, window, count, temperature, top_k):
     return mx.stack(generated).tolist()
 
 
+def _sample_window(model, window, count, temperature, top_k):
+    def step(state):
+        logits = model(state, last_token_only=True)[0, -1]
+        token = _sample_token(logits, temperature, top_k).astype(state.dtype)
+        return mx.concatenate((state[:, 1:], token.reshape(1, 1)), axis=1), token
+
+    step = mx.compile(step, inputs=mx.random.state, outputs=mx.random.state)
+    state = mx.array([window], dtype=mx.int32)
+    generated = []
+    for index in range(count):
+        state, token = step(state)
+        generated.append(token)
+        mx.async_eval(state, token)
+        if index and index % 8 == 0:
+            mx.eval(generated[-8])
+    return mx.stack(generated).tolist()
+
+
 def generate(
     model: GPT,
     prompt: str,
@@ -387,22 +405,17 @@ def generate(
         count = min(tokens, model.config.context - len(sequence) + 1)
         generated = _sample_prefix(model, sequence, count, temperature, top_k)
         sequence.extend(generated)
-    compiled_logits = None
-    compile_windows = mx.default_device() == mx.gpu
-    for index in range(len(generated), tokens):
+    remaining = tokens - len(generated)
+    # Full windows keep one shape. Queue them on Metal once sixteen bytes
+    # remain so the sampled byte and shifted window stay on the device.
+    if mx.default_device() == mx.gpu and len(sequence) >= model.config.context and remaining >= 16:
+        generated.extend(
+            _sample_window(model, sequence[-model.config.context :], remaining, temperature, top_k)
+        )
+        return prompt + decode(generated)
+    for _ in range(len(generated), tokens):
         window = sequence[-model.config.context :]
-        # A full window keeps a fixed shape as generation continues. Sixteen
-        # remaining bytes amortize compilation in the Metal measurements.
-        # CPU sampling measured faster with the eager last-token path.
-        if (
-            compile_windows
-            and compiled_logits is None
-            and len(window) == model.config.context
-            and tokens - index >= 16
-        ):
-            compiled_logits = mx.compile(last_logits)
-        forward = compiled_logits or last_logits
-        logits = forward(mx.array([window], dtype=mx.int32))
+        logits = last_logits(mx.array([window], dtype=mx.int32))
         token = int(_sample_token(logits, temperature, top_k).item())
         sequence.append(token)
         generated.append(token)
