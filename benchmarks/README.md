@@ -590,3 +590,85 @@ receipt includes the preparation command, data hashes, and all validation points
 - small / 17: [baseline](learning/residual-09a5066-small-seed17.json), [updated](learning/residual-12beb3c-small-seed17.json).
 - small / 42: [baseline](learning/residual-09a5066-small-seed42.json), [updated](learning/residual-12beb3c-small-seed42.json).
 - medium / 1337: [baseline](learning/residual-09a5066-medium-seed1337.json), [updated](learning/residual-12beb3c-medium-seed1337.json).
+
+## Complete attention forward pass
+
+Source `1203504` combines scores, causal softmax, and the value product in one
+Metal kernel. It covers context 128 and aligned contexts 256–512 with head
+widths 32–64. Each tile handles eight queries. Shorter contexts use 128 GPU
+threads; longer contexts use 256 and store output in the order consumed by
+the projection. Saved probabilities support the existing gradient kernel and
+masked products. Model settings, float32 math, and the two-step queue match
+the baseline at `316f010`.
+
+The comparison uses a 2 GiB allocator and cache setting. The first diagnostic
+alternates 100 pairs of ten-step blocks while both models stay alive. The
+second alternates 20 pairs of fresh models. Each fresh model runs 20 warmup
+steps and 100 timed steps; one model stays alive at a time. Every timed block
+includes its final GPU wait.
+
+| Preset | Ten-step median gain | Faster blocks / 100 | Fresh-trial median gain | Fresh total-time gain | Faster fresh trials / 20 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| tiny | +2.9% | 100 | +3.1% | +3.0% | 20 |
+| small | +1.0% | 81 | +0.5% | +0.7% | 15 |
+| medium | +1.1% | 97 | +0.2% | +1.0% | 11 |
+
+Raw diagnostics: [ten-step blocks](diagnostics/attention-values-1203504-blocks.json)
+and [fresh-model trials](diagnostics/attention-values-1203504-fresh.json).
+The fresh receipt also records peak active memory for each trial.
+Tiny has the clearest gain. Small has a modest gain. Medium's fresh results
+are close to even, with 11 of 20 pairs faster.
+
+```bash
+uv run python scripts/compare_attention.py --baseline-ref 316f010 \
+  --queued --memory-gb 2 --pairs 100 --steps 10 --warmup 20 \
+  --out benchmarks/diagnostics/attention-blocks.json
+uv run python scripts/compare_attention.py --baseline-ref 316f010 \
+  --queued --fresh --memory-gb 2 --pairs 20 --steps 100 --warmup 20 \
+  --out benchmarks/diagnostics/attention-fresh.json
+```
+
+The time series retains the separate three-trial measurements. These ran
+sequentially across presets and source versions. Their medians and ranges
+record conditions during those runs. The alternating trials provide a closer
+comparison of the implementations.
+
+| Preset | Baseline median bytes/s | Final median bytes/s | Recorded change | Peak active MiB before → after |
+| --- | ---: | ---: | ---: | ---: |
+| tiny | 508,279 | 474,823 | -6.6% | 279.5 → 275.6 |
+| small | 170,085 | 124,744 | -26.7% | 1,519.0 → 1,525.0 |
+| medium | 59,244 | 45,758 | -22.8% | 1,844.8 → 1,886.4 |
+
+- tiny: baseline range 508,084–512,573 bytes/s; final range 461,522–480,768.
+- small: baseline range 167,859–172,838 bytes/s; final range 121,792–125,288.
+- medium: baseline range 58,621–60,304 bytes/s; final range 43,154–46,082.
+
+Raw standard receipts: [baseline](results/m4-max-316f010-gpu.json),
+[first fused version](results/m4-max-1d71ed2-gpu.json), and
+[final version](results/m4-max-1203504-gpu.json). All three remain on the time
+series. The first fused version kept its longer outputs in attention order.
+Its medium fresh-model median gained 0.2%, with 11 of 20 faster pairs and
+a 0.9% fall in aggregate throughput. It used 65.6 MiB more peak memory.
+The final output layout saves 24 MiB relative to that version. Its
+[initial paired](diagnostics/attention-values-1d71ed2-blocks.json) and
+[initial fresh](diagnostics/attention-values-c39387d-fresh.json) receipts
+remain available.
+
+Five matched 300-step learning checks use the bundled story. Tiny and small
+use the existing 90/10 split; medium uses 80/20 so the validation split fits
+its 512-byte context. Each comparison keeps the preset, seed, optimizer,
+queue, evaluation schedule, and data fixed. These short checks describe
+training on this story.
+
+| Preset, seed | Final validation loss before → after | Best validation loss before → after | Best step |
+| --- | ---: | ---: | ---: |
+| tiny, 1337 | [2.171206](learning/attention-values-316f010-tiny-seed1337.json) → [2.171205](learning/attention-values-1203504-tiny-seed1337.json) | 2.171206 → 2.171205 | 300 |
+| small, 1337 | [2.278083](learning/attention-values-316f010-small-seed1337.json) → [2.251307](learning/attention-values-1203504-small-seed1337.json) | 2.219387 → 2.219491 | 200 |
+| small, 17 | [2.301266](learning/attention-values-316f010-small-seed17.json) → [2.295916](learning/attention-values-1203504-small-seed17.json) | 2.198031 → 2.197936 | 200 |
+| small, 42 | [2.240472](learning/attention-values-316f010-small-seed42.json) → [2.239471](learning/attention-values-1203504-small-seed42.json) | 2.204096 → 2.204035 | 200 |
+| medium, 1337 | [2.904349](learning/attention-values-316f010-medium-seed1337.json) → [2.904220](learning/attention-values-1203504-medium-seed1337.json) | 2.421399 → 2.421400 | 100 |
+
+The largest absolute final-loss difference is 0.0268 nats; the
+largest best-checkpoint difference is 0.0002 nats. Each pair selects
+the same best checkpoint step. Initial-version learning receipts are also
+preserved: [tiny 1337](learning/attention-values-1d71ed2-tiny-seed1337.json), [small 1337](learning/attention-values-1d71ed2-small-seed1337.json), [small 17](learning/attention-values-1d71ed2-small-seed17.json), [small 42](learning/attention-values-1d71ed2-small-seed42.json), [medium 1337](learning/attention-values-1d71ed2-medium-seed1337.json).

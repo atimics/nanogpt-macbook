@@ -140,7 +140,7 @@ def main(component="normalization"):
         "--fresh", action="store_true", help="Create one fresh model per path in each pair"
     )
     parser.add_argument(
-        "--memory-gb", type=float, default=4, help="MLX memory/cache budget for both live models"
+        "--memory-gb", type=float, default=4, help="MLX memory and cache budget in GiB"
     )
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
