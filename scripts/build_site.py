@@ -212,7 +212,8 @@ def timeline_cards(rows, commits):
         label = "Metal GPU" if device == "gpu" else "CPU"
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
-            f'<div class="timeline-changes"><span>Latest: {baseline_change:+.1f}% vs baseline</span>'
+            '<div class="timeline-changes"><span>'
+            f"Latest: {baseline_change:+.1f}% vs baseline</span>"
             f"<span>{change_text}</span></div></div>"
             '<div class="timeline-reading">'
             f"<span data-point-value>{last:,.0f} bytes/s</span>"
