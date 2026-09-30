@@ -130,3 +130,64 @@ def test_each_sampling_call_uses_the_current_weights(device, monkeypatch):
     monkeypatch.setattr(engine, "decode", capture)
     engine.generate(model, prompt, 20, seed=8)
     assert captured == expected
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("layers,prefix", [(1, 1), (2, 7), (2, 16)])
+def test_prefix_cache_logits_match_rebuilt_context_and_ignore_unused_slots(device, layers, prefix):
+    select(device)
+    model = GPT(ModelConfig(context=32, layers=layers, heads=2, width=32))
+    model.eval()
+    parameter_names = [name for name, _ in tree_flatten(model.parameters())]
+    rng = np.random.default_rng(56)
+    inputs = mx.array(rng.integers(0, 256, (2, 64), dtype=np.int32))[:, ::2]
+    logits, cache = model.cached_logits(inputs[:, :prefix])
+    expected = model(inputs[:, :prefix], last_token_only=True)
+    np.testing.assert_allclose(np.array(logits), np.array(expected), atol=3e-6, rtol=3e-5)
+    assert logits.shape == (2, 1, 256)
+    # Future slots must remain masked even when their values are large.
+    cache = [
+        tuple(
+            mx.concatenate((a[:, :, :prefix], mx.full_like(a[:, :, prefix:], 1000)), axis=2)
+            for a in state
+        )
+        for state in cache
+    ]
+    step = mx.compile(model.cached_logits)
+    for position in range(prefix, model.config.context):
+        logits, cache = step(inputs[:, position : position + 1], cache, mx.array([position]))
+        expected = model(inputs[:, : position + 1], last_token_only=True)
+        np.testing.assert_allclose(np.array(logits), np.array(expected), atol=3e-6, rtol=3e-5)
+        assert all(a.shape == (2, 2, 32, 16) for state in cache for a in state)
+    assert [name for name, _ in tree_flatten(model.parameters())] == parameter_names
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("temperature,top_k", [(0, 40), (0.8, 0), (0.8, 7), (0.8, 256)])
+def test_cached_sampling_preserves_bytes_and_random_state_across_full_context(
+    device, temperature, top_k, monkeypatch
+):
+    select(device)
+    model = GPT(ModelConfig(context=64, layers=2, heads=2, width=32))
+    expected = full_output_tokens(model, "Mira ", 100, temperature, top_k, 56)
+    expected_random = np.array(mx.random.uniform(shape=(10,)))
+    captured = []
+    monkeypatch.setattr(engine, "decode", lambda tokens: captured.extend(tokens) or decode(tokens))
+    engine.generate(model, "Mira ", 100, temperature, top_k, 56)
+    assert captured == expected
+    np.testing.assert_array_equal(np.array(mx.random.uniform(shape=(10,))), expected_random)
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("count", [1, 2, 4, 8, 15, 16, 17, 32])
+def test_cached_sampling_short_outputs_and_repeated_calls(device, count, monkeypatch):
+    select(device)
+    model = GPT(ModelConfig(context=64, layers=1, heads=2, width=32))
+    engine.generate(model, "Mira ", count, seed=55)
+    mx.random.seed(100)
+    model.tokens.weight = mx.random.normal(model.tokens.weight.shape) * 0.2
+    expected = full_output_tokens(model, "Mira ", count, 0.8, 40, 55)
+    captured = []
+    monkeypatch.setattr(engine, "decode", lambda tokens: captured.extend(tokens) or decode(tokens))
+    engine.generate(model, "Mira ", count, seed=55)
+    assert captured == expected

@@ -328,6 +328,39 @@ def load_model(run: Path, which: str = "best"):
     return model, state
 
 
+def _sample_token(logits, temperature, top_k):
+    if temperature == 0:
+        return mx.argmax(logits)
+    logits = logits / temperature
+    if top_k:
+        cutoff = mx.sort(logits)[-top_k]
+        logits = mx.where(logits >= cutoff, logits, -float("inf"))
+    return mx.random.categorical(logits)
+
+
+def _sample_prefix(model, window, count, temperature, top_k):
+    logits, cache = model.cached_logits(mx.array([window], dtype=mx.int32))
+    token = _sample_token(logits[0, -1], temperature, top_k)
+    generated = [token]
+    mx.async_eval(token, cache)
+
+    def step(token, state, position):
+        logits, state = model.cached_logits(token.reshape(1, 1), state, position)
+        return _sample_token(logits[0, -1], temperature, top_k), state
+
+    if mx.default_device() == mx.gpu and count >= 16:
+        step = mx.compile(step, inputs=mx.random.state, outputs=mx.random.state)
+    for index in range(1, count):
+        position = mx.array([len(window) + index - 1], dtype=mx.int32)
+        token, cache = step(token, cache, position)
+        generated.append(token)
+        mx.async_eval(token, cache)
+        # Bound queued work while each sampled byte stays on the device.
+        if index % 8 == 0:
+            mx.eval(generated[-8])
+    return mx.stack(generated).tolist()
+
+
 def generate(
     model: GPT,
     prompt: str,
@@ -350,9 +383,13 @@ def generate(
     def last_logits(inputs):
         return model(inputs, last_token_only=True)[0, -1]
 
+    if len(sequence) < model.config.context and tokens > 1:
+        count = min(tokens, model.config.context - len(sequence) + 1)
+        generated = _sample_prefix(model, sequence, count, temperature, top_k)
+        sequence.extend(generated)
     compiled_logits = None
     compile_windows = mx.default_device() == mx.gpu
-    for index in range(tokens):
+    for index in range(len(generated), tokens):
         window = sequence[-model.config.context :]
         # A full window keeps a fixed shape as generation continues. Sixteen
         # remaining bytes amortize compilation in the Metal measurements.
@@ -366,14 +403,7 @@ def generate(
             compiled_logits = mx.compile(last_logits)
         forward = compiled_logits or last_logits
         logits = forward(mx.array([window], dtype=mx.int32))
-        if temperature == 0:
-            token = int(mx.argmax(logits).item())
-        else:
-            logits = logits / temperature
-            if top_k:
-                cutoff = mx.sort(logits)[-top_k]
-                logits = mx.where(logits >= cutoff, logits, -float("inf"))
-            token = int(mx.random.categorical(logits).item())
+        token = int(_sample_token(logits, temperature, top_k).item())
         sequence.append(token)
         generated.append(token)
     return prompt + decode(generated)
