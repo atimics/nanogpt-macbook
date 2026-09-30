@@ -3,18 +3,18 @@
   "source_commit": "29b81adae0cc2f23fc0cf3e8c9064e0a14cc09f9",
   "python_source_sha256": "6e77572946aef11d0f67c60330b8fa769bec66fc08367a9b0d9ae8e19aa81ea5",
   "source_dirty": false,
-  "recorded_at": "2026-09-30T09:03:14.016934+00:00",
+  "recorded_at": "2026-09-30T09:04:03.842545+00:00",
   "chip": "Apple M4 Max",
   "mlx": "0.32.3",
   "device": "gpu",
-  "preset": "tiny",
+  "preset": "small",
   "dtype": "float32",
   "execution": "pipelined",
   "model_config": {
-    "context": 128,
-    "layers": 4,
-    "heads": 4,
-    "width": 128,
+    "context": 256,
+    "layers": 6,
+    "heads": 8,
+    "width": 256,
     "vocab_size": 256
   },
   "train_config": {
@@ -26,7 +26,7 @@
     "decay_steps": 2000,
     "weight_decay": 0.1,
     "grad_clip": 1.0,
-    "seed": 1337
+    "seed": 17
   },
   "dataset": {
     "format": 1,
@@ -39,48 +39,48 @@
     "train_sha256": "5469cfe0d6c1f14f392df065dd08b0b0b91cd5ab7d770606d66b318684971595",
     "val_sha256": "b6951b5b775173a1739be89e09e0226182075ee3a51d82b15d2d2a6acec6e42d"
   },
-  "command": "uv run nanogpt train --data data/demo --run runs/queue-tiny --preset tiny --seed 1337 --steps 300 --eval-every 100 --eval-batches 10 --log-every 100 --device gpu",
+  "command": "uv run nanogpt train --data data/demo --run runs/queue-small --preset small --seed 17 --steps 300 --eval-every 100 --eval-batches 10 --log-every 100 --device gpu",
   "metrics": [
     {
       "step": 0,
-      "val_loss": 5.5228660106658936,
-      "bits_per_byte": 7.967811405081898
+      "val_loss": 5.585378885269165,
+      "bits_per_byte": 8.05799841926375
     },
     {
       "step": 100,
-      "train_loss": 2.36753249168396,
+      "train_loss": 2.1891984939575195,
       "learning_rate": 0.0005978816943937696,
-      "bytes_per_second": 416161.1975974449,
-      "peak_memory_mib": 268.00585556030273
+      "bytes_per_second": 147526.36710250744,
+      "peak_memory_mib": 1546.381275177002
     },
     {
       "step": 100,
-      "val_loss": 2.363024592399597,
-      "bits_per_byte": 3.4091238609535632
+      "val_loss": 2.259259510040283,
+      "bits_per_byte": 3.2594224912163456
     },
     {
       "step": 200,
-      "train_loss": 2.1790945529937744,
+      "train_loss": 1.9163405895233154,
       "learning_rate": 0.0005891834706748625,
-      "bytes_per_second": 447956.0919899213,
-      "peak_memory_mib": 268.00585556030273
+      "bytes_per_second": 141011.97549825808,
+      "peak_memory_mib": 1546.38130569458
     },
     {
       "step": 200,
-      "val_loss": 2.2165124893188475,
-      "bits_per_byte": 3.197751576408753
+      "val_loss": 2.1979583978652952,
+      "bits_per_byte": 3.1709836806805125
     },
     {
       "step": 300,
-      "train_loss": 1.9994736909866333,
+      "train_loss": 1.505963683128357,
       "learning_rate": 0.0005739739820991847,
-      "bytes_per_second": 442648.4246675523,
-      "peak_memory_mib": 268.00585556030273
+      "bytes_per_second": 142545.64334953213,
+      "peak_memory_mib": 1546.38130569458
     },
     {
       "step": 300,
-      "val_loss": 2.1712108135223387,
-      "bits_per_byte": 3.13239507339317
+      "val_loss": 2.296603059768677,
+      "bits_per_byte": 3.3132978452186896
     }
   ]
 }

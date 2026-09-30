@@ -34,7 +34,8 @@ for each point. The training loop compiles gradients, clipping, and AdamW into
 one MLX step for higher throughput. Metal training queues up to two steps so
 the CPU can prepare work while the GPU runs. Every step's loss and gradient
 norm are checked. The queue finishes before reports, evaluation, and checkpoints.
-Use `--sync` with `train`, `resume`, or `benchmark` to wait after each step.
+The queue uses more peak GPU memory. Use `--sync` with `train`, `resume`, or
+`benchmark` to wait after each step and reduce peak memory.
 
 The demo contains a short original story. A short run should reduce the loss
 and start to learn letters and word patterns. Use a larger, varied corpus and
