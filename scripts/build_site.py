@@ -180,7 +180,6 @@ def timeline_cards(rows, commits):
             f'aria-label="{preset} {device} '
             f'throughput across {len(series)} measured commits">',
             f'<line x1="{left}%" y1="{bottom}" x2="{right}%" y2="{bottom}" stroke="#ccd5c0"/>',
-            '<text x="8" y="21" font-size="10" fill="#5f6e64">BYTES / SECOND</text>',
         ]
         if len(positions) > 1:
             for (x1, y1), (x2, y2) in zip(positions[:-1], positions[1:], strict=True):
@@ -216,7 +215,8 @@ def timeline_cards(rows, commits):
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
             f'<div class="timeline-changes"><span>{baseline_change:+.1f}% vs baseline</span>'
-            f'<span>{change_text}</span></div></div><div class="timeline-plot">'
+            f"<span>{change_text}</span></div></div>"
+            '<p class="timeline-unit">Bytes / second</p><div class="timeline-plot">'
             f"{''.join(chart)}</div></article>"
         )
     return "\n".join(cards)

@@ -60,3 +60,10 @@
 .method-list dt{flex:0 0 auto;min-width:6rem}
 .method-list dd{flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
 .terminal-bar{flex-wrap:wrap;gap:10px}
+
+.timeline-unit{font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:22px}
+.timeline-unit+.timeline-plot{margin-top:0}
+.timeline-plot{container-type:inline-size}
+.timeline-label{transform:translateX(calc(clamp(2px,calc(var(--label-position) - var(--label-offset)),calc(100cqi - var(--label-width) - 2px)) + var(--label-offset)))}
+.timeline-plot a:focus-visible{outline:0}
+.timeline-plot a:focus-visible circle{stroke:var(--ink);stroke-width:3}

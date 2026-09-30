@@ -14,8 +14,12 @@ function fitTimelineLabels(plot) {
     const offset = anchor === 'start' ? 0 : anchor === 'end' ? labelWidth : labelWidth / 2;
     const start = Math.max(2, Math.min(position - offset, width - labelWidth - 2));
     texts.forEach(text => {
-      text.setAttribute('x', String(start + offset));
+      // CSS clamps the label within the current width between resize callbacks.
+      text.setAttribute('x', '0');
       text.setAttribute('text-anchor', anchor);
+      text.style.setProperty('--label-position', `${point.dataset.position}cqi`);
+      text.style.setProperty('--label-width', `${labelWidth}px`);
+      text.style.setProperty('--label-offset', `${offset}px`);
     });
     return {start, end: start + labelWidth, fits: labelWidth + 4 <= width};
   });
@@ -31,11 +35,14 @@ function fitTimelineLabels(plot) {
   });
 }
 const timelineObserver = new ResizeObserver(entries => {
-  entries.forEach(entry => fitTimelineLabels(entry.target));
+  // A font change can resize text while the plot stays the same size.
+  const plots = new Set(entries.map(entry => entry.target.closest('.timeline-plot')));
+  plots.forEach(fitTimelineLabels);
 });
 document.querySelectorAll('.timeline-plot').forEach(plot => {
   fitTimelineLabels(plot);
   timelineObserver.observe(plot);
+  plot.querySelectorAll('svg text.timeline-label').forEach(text => timelineObserver.observe(text));
 });
 function fitResultTable(region) {
   if (!region.clientWidth) return;

@@ -399,3 +399,30 @@ Three 300-step learning comparisons cover small-model seeds 1337, 17, and 42.
 The largest absolute final validation-loss difference is 0.0076 nats; the
 largest best-checkpoint difference is 0.0022 nats. The benchmark report links
 all six complete learning traces and the timing receipts.
+
+## Chart text changes after loading, 30 September 2026
+
+The 69-point live page fits ordinary resized views after layout settles. Reading
+bounds immediately after a width change found up to 14 clipped labels; those
+readings cleared within two animation frames. A separate accessibility fixture
+sets existing chart text to 24 px after loading. Its plot width stays unchanged.
+Commit labels then overlap, and the SVG unit title clips about 2 px at the top
+in Chromium and WebKit. The width observer misses that text-size change.
+
+The chart now observes label dimensions too. CSS clamps each label to the
+current plot width through container units between callbacks, while label sizes control
+which labels appear. The unit title uses normal flowing text above the plot.
+Keyboard focus draws a ring around the selected point. Every point keeps its
+commit link and native title, and each card retains the
+baseline and previous percentages.
+
+The original resize sequence now fits even in immediate readings. The text
+fixture fits after enlargement and reduction at the same width. Browser checks
+cover Chromium and WebKit, widths 240–1440 px, CSS zoom at 125% and 200%, and
+249 points with a sparse CPU series. They check visible glyphs on both axes,
+label spacing, keyboard focus, point links and browser errors. The ordinary
+controls audit also passes 120 states with all 69 points, eight percentage
+badges, both metrics, device filters and expanded results. Seven Node
+regressions and nine Python site tests pass. The font regression checks that
+label elements are registered with the observer. Firefox is absent from the
+installed test browsers.
