@@ -167,7 +167,8 @@ def timeline_cards(rows, commits):
             key=lambda row: commits.index(row["source"]["commit"]),
         )
         left, right = 9, 91
-        top, bottom = 30, 165
+        top, bottom = 14, 77
+        baseline = series[0]["summary"]["median_bytes_per_second"]
         maximum = max(r["summary"]["median_bytes_per_second"] for r in series) * 1.2
         positions = []
         for row in series:
@@ -179,45 +180,49 @@ def timeline_cards(rows, commits):
             '<svg width="100%" height="215" role="img" '
             f'aria-label="{preset} {device} '
             f'throughput across {len(series)} measured commits">',
-            f'<line x1="{left}%" y1="{bottom}" x2="{right}%" y2="{bottom}" stroke="#ccd5c0"/>',
+            f'<line x1="{left}%" y1="{bottom}%" x2="{right}%" y2="{bottom}%" stroke="#ccd5c0"/>',
         ]
         if len(positions) > 1:
             for (x1, y1), (x2, y2) in zip(positions[:-1], positions[1:], strict=True):
                 chart.append(
-                    f'<line x1="{x1:.2f}%" y1="{y1:.1f}" x2="{x2:.2f}%" y2="{y2:.1f}" '
+                    f'<line x1="{x1:.2f}%" y1="{y1:.2f}%" x2="{x2:.2f}%" y2="{y2:.2f}%" '
                     'stroke="#187556" stroke-width="3"/>'
                 )
         for index, (row, (x, y)) in enumerate(zip(series, positions, strict=True)):
             value = row["summary"]["median_bytes_per_second"]
+            baseline_change = f"{(value / baseline - 1) * 100:+.1f}%"
+            previous = series[max(0, index - 1)]["summary"]["median_bytes_per_second"]
+            previous_change = f"{(value / previous - 1) * 100:+.1f}%" if index else ""
             sha = row["source"]["commit"]
             anchor = "start" if index == 0 else "end" if index == len(series) - 1 else "middle"
             chart.append(
                 f'<a href="{REPO}/commit/{sha}" data-position="{x:.2f}" '
                 f'data-value="{value:,.0f}" data-commit="{sha[:7]}" '
+                f'data-baseline-change="{baseline_change}" '
+                f'data-previous-change="{previous_change}" '
                 f'data-label="{str(index in (0, len(series) - 1)).lower()}" '
                 f'aria-label="Commit {sha[:7]}: '
                 f'{value:,.0f} bytes per second">'
                 f"<title>{sha[:7]}: {value:,.0f} bytes per second</title>"
-                f'<circle cx="{x:.2f}%" cy="{y:.1f}" r="5" fill="#187556"/>'
-                f'<text class="timeline-label" x="{x:.2f}%" y="190" text-anchor="{anchor}" '
+                f'<circle cx="{x:.2f}%" cy="{y:.2f}%" r="5" fill="#187556"/>'
+                f'<text class="timeline-label" x="{x:.2f}%" y="90%" text-anchor="{anchor}" '
                 f'font-size="10" fill="#187556">{sha[:7]}</text></a>'
             )
         chart.append("</svg>")
-        previous = series[-2 if len(series) > 1 else 0]["summary"]["median_bytes_per_second"]
         last = series[-1]["summary"]["median_bytes_per_second"]
-        baseline = series[0]["summary"]["median_bytes_per_second"]
-        baseline_change = (last / baseline - 1) * 100
-        change = (last / previous - 1) * 100
-        change_text = f"{change:+.1f}% vs previous" if len(series) > 1 else "First measurement"
+        previous_label = "vs previous" if len(series) > 1 else "first measurement"
         label = "Metal GPU" if device == "gpu" else "CPU"
         cards.append(
-            f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
-            '<div class="timeline-changes"><span>'
-            f"Latest: {baseline_change:+.1f}% vs baseline</span>"
-            f"<span>{change_text}</span></div></div>"
+            f'<article class="timeline-card"><div class="timeline-head">'
+            f"<h3>{preset} / {label}</h3></div>"
             '<div class="timeline-reading">'
             f"<span data-point-value>{last:,.0f} bytes/s</span>"
             f"<span data-point-commit>Latest · {series[-1]['source']['commit'][:7]}</span>"
+            '</div><div class="timeline-changes">'
+            '<span data-comparison="baseline">'
+            f"<strong>{baseline_change}</strong><small>vs baseline</small></span>"
+            '<span data-comparison="previous">'
+            f"<strong>{previous_change or '—'}</strong><small>{previous_label}</small></span>"
             '</div><div class="timeline-plot">'
             f"{''.join(chart)}</div></article>"
         )

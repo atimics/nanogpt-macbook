@@ -99,6 +99,33 @@ def test_timeline_uses_distinct_commits_and_matching_workloads(tmp_path):
         BUILDER["load_results"](tmp_path)
 
 
+def test_each_point_compares_its_value_with_baseline_and_previous():
+    _, rows = BUILDER["load_results"](ROOT)
+    series = []
+    for commit, value in zip(("a" * 40, "b" * 40, "c" * 40), (100, 150, 75), strict=True):
+        row = copy.deepcopy(rows[0])
+        row["source"]["commit"] = commit
+        row["summary"]["median_bytes_per_second"] = value
+        series.append(row)
+    markup = BUILDER["timeline_cards"](series, [r["source"]["commit"] for r in series])
+    points = []
+
+    class Points(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "a":
+                points.append(attrs)
+            if tag == "circle":
+                assert attrs["cy"].endswith("%")
+            if tag == "text":
+                assert attrs["y"].endswith("%")
+
+    Points().feed(markup)
+    assert [p["data-baseline-change"] for p in points] == ["+0.0%", "+50.0%", "-25.0%"]
+    assert [p["data-previous-change"] for p in points] == ["", "+50.0%", "-50.0%"]
+    assert len(points) == len(series)
+
+
 def test_asset_urls_change_with_content_for_returning_visitors(tmp_path):
     root = tmp_path / "source"
     for name in ("site", "benchmarks"):
