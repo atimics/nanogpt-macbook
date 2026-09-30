@@ -276,3 +276,29 @@ To repeat the large-text check in Chromium, launch a test browser with
 Memory. For the container check, apply the rule above at 1280 px. Open
 “All measured results and settings”, change each device filter, and resize down
 and up. Check the whole page, visible axis text, values, and expanded results.
+
+## Fused attention score gradients, 30 September 2026
+
+The new Metal path uses masked matrix products and combines the probability
+gradient product with the softmax derivative. It covers the small and medium
+presets. The tiny preset keeps its existing attention path.
+
+Checks cover eager and compiled outputs, all input gradients, strided inputs,
+partial 64-row mask blocks, a float64 reference, causal boundaries, large
+scores, complete model updates, gradient accumulation, and checkpoint resume.
+The float64 gradient checks cover contexts 256 and 512 with random and uniform
+scores. General attention remains covered for other widths, lengths, value
+widths, and float16 inputs.
+
+The standard three-trial receipts at `0898920` and `ddb8a6f` use the same
+settings. The 200-pair comparison shows median throughput gains of 9.1% for
+small and 6.0% for medium. Peak active memory falls by 47.6 and 140.4 MiB.
+Tiny's measured pair difference is -0.7%, with the same attention operations.
+
+Three small-model learning comparisons reach final validation losses between
+2.2186 and 2.2997 for the baseline, and 2.2468 and 2.2999 for the update. The
+largest final difference is +0.0394 nats. The saved best-checkpoint losses
+differ by -0.0106, +0.000004, and +0.0007 nats for seeds 1337, 17, and 42.
+Full traces, raw timings, and repeat
+commands are in the [attention report](../benchmarks/README.md#attention-score-gradients).
+The tiny story check reaches 2.1712084 after 300 steps.
