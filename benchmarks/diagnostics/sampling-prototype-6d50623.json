@@ -1,0 +1,589 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "989a68b97ec99e40c493a671b0d83f87d88d7a9f389de5eb1d59ea4af06b0165",
+    "commit": "6d50623f241de6eb1b5518ba28f4f37da4e2da71",
+    "source_dirty": false
+  },
+  "candidate_source_sha256": "d62b1b871064e2babeb7afd7162faafda1d0dbf9fd12f960bcc6fa3064f73df4",
+  "candidate_source": "\"\"\"A pre-norm, decoder-only GPT with tied embeddings and causal attention.\"\"\"\n\nimport math\n\nimport mlx.core as mx\nimport mlx.nn as nn\nfrom mlx.utils import tree_flatten\n\nfrom .activations import gelu_approx\nfrom .attention import training_attention\nfrom .config import ModelConfig\nfrom .normalization import LayerNorm\n\n\ndef _residual_projection(residual, hidden, projection):\n    \"\"\"Combine a bias-free projection and residual addition on Metal.\"\"\"\n    if (\n        mx.default_device() == mx.gpu\n        and residual.dtype == hidden.dtype == projection.weight.dtype == mx.float32\n        # Wider training MLPs measured faster with separate operations.\n        and (hidden.shape[-1] <= 1024 or not projection.training)\n    ):\n        return mx.addmm(residual, hidden, projection.weight.T)\n    return residual + projection(hidden)\n\n\nclass Attention(nn.Module):\n    def __init__(self, config: ModelConfig):\n        super().__init__()\n        self.heads = config.heads\n        self.qkv = nn.Linear(config.width, config.width * 3, bias=False)\n        self.proj = nn.Linear(config.width, config.width, bias=False)\n\n    def __call__(self, x, residual=None, last_token_only=False):\n        batch, length, width = x.shape\n        q, k, v = mx.split(self.qkv(x), 3, axis=-1)\n        q, k, v = [\n            item.reshape(batch, length, self.heads, width // self.heads).transpose(0, 2, 1, 3)\n            for item in (q, k, v)\n        ]\n        if last_token_only:\n            q = q[:, :, -1:, :]\n            length = 1\n            if residual is not None:\n                residual = residual[:, -1:, :]\n        if self.training:\n            attended = training_attention(q, k, v)\n        else:\n            attended = mx.fast.scaled_dot_product_attention(\n                q, k, v, scale=(width // self.heads) ** -0.5, mask=None if last_token_only else \"causal\"\n            )\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, length, width)\n        if residual is None:\n            return self.proj(hidden)\n        return _residual_projection(residual, hidden, self.proj)\n\n\nclass Block(nn.Module):\n    def __init__(self, config: ModelConfig):\n        super().__init__()\n        self.attention_norm = LayerNorm(config.width)\n        self.attention = Attention(config)\n        self.mlp_norm = LayerNorm(config.width)\n        self.up = nn.Linear(config.width, 4 * config.width, bias=False)\n        self.down = nn.Linear(4 * config.width, config.width, bias=False)\n\n    def __call__(self, x, last_token_only=False):\n        x = self.attention(self.attention_norm(x), x, last_token_only=last_token_only)\n        hidden = gelu_approx(self.up(self.mlp_norm(x)))\n        return _residual_projection(x, hidden, self.down)\n\n\nclass GPT(nn.Module):\n    def __init__(self, config: ModelConfig):\n        super().__init__()\n        self.config = config\n        self.tokens = nn.Embedding(config.vocab_size, config.width)\n        self.positions = nn.Embedding(config.context, config.width)\n        self.blocks = [Block(config) for _ in range(config.layers)]\n        self.norm = LayerNorm(config.width)\n        for name, module in self.named_modules():\n            if isinstance(module, (nn.Linear, nn.Embedding)):\n                scale = 0.02\n                if name.endswith((\"attention.proj\", \"down\")):\n                    scale /= math.sqrt(2 * config.layers)\n                module.weight = mx.random.normal(module.weight.shape) * scale\n\n    def __call__(self, tokens, last_token_only=False):\n        if tokens.ndim != 2 or not 0 < tokens.shape[1] <= self.config.context:\n            raise ValueError(f\"Use a batch with 1 to {self.config.context} tokens per sequence\")\n        x = self.tokens(tokens) + self.positions(mx.arange(tokens.shape[1]))\n        for index, block in enumerate(self.blocks):\n            x = block(x, last_token_only=last_token_only and index == len(self.blocks) - 1)\n        return self.tokens.as_linear(self.norm(x))\n\n    @property\n    def parameter_count(self):\n        return sum(value.size for _, value in tree_flatten(self.parameters()))\n\n\ndef loss_fn(model: GPT, inputs, targets):\n    logits = model(inputs).astype(mx.float32)\n    return nn.losses.cross_entropy(logits, targets, reduction=\"mean\")\n",
+  "method": {
+    "device": "gpu",
+    "memory_gb": 2,
+    "tokens": 200,
+    "pairs": 3,
+    "temperature": 0,
+    "includes_first_compile": true
+  },
+  "validation": [
+    {
+      "preset": "tiny",
+      "length": 1,
+      "max_error": 0.0
+    },
+    {
+      "preset": "tiny",
+      "length": 5,
+      "max_error": 1.7881393432617188e-07
+    },
+    {
+      "preset": "tiny",
+      "length": 128,
+      "max_error": 1.7881393432617188e-07
+    },
+    {
+      "preset": "small",
+      "length": 1,
+      "max_error": 0.0
+    },
+    {
+      "preset": "small",
+      "length": 5,
+      "max_error": 2.5331974029541016e-07
+    },
+    {
+      "preset": "small",
+      "length": 256,
+      "max_error": 7.152557373046875e-07
+    },
+    {
+      "preset": "medium",
+      "length": 1,
+      "max_error": 0.0
+    },
+    {
+      "preset": "medium",
+      "length": 5,
+      "max_error": 3.5762786865234375e-07
+    },
+    {
+      "preset": "medium",
+      "length": 512,
+      "max_error": 7.152557373046875e-07
+    }
+  ],
+  "results": [
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 1.8047068752348423,
+          "bytes_per_second": 110.82132103806302,
+          "peak_memory_mib": 10.21599006652832,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.1898925001733005,
+          "bytes_per_second": 1053.2274830099932,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.1290967077948153,
+          "bytes_per_second": 1549.2261841245208,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.12729462468996644,
+          "bytes_per_second": 1571.1582518673652,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.11948604183271527,
+          "bytes_per_second": 1673.8356793173143,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.13598795793950558,
+          "bytes_per_second": 1470.718459416607,
+          "peak_memory_mib": 10.21599006652832,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.12052583321928978,
+          "bytes_per_second": 1659.395290270357,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.1357353343628347,
+          "bytes_per_second": 1473.4556844673853,
+          "peak_memory_mib": 10.21599006652832,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.1269145831465721,
+          "bytes_per_second": 1575.8630335571636,
+          "peak_memory_mib": 8.6148681640625,
+          "output_sha256": "3cae5621e3d05e98e4689c3611a7e6cd591f3bf316fd3cbd7cd91ea7a374f599"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.13598795793950558,
+        "last": 0.12729462468996644,
+        "compiled": 0.12052583321928978
+      },
+      "speedup": {
+        "last": 1.0682930113562317,
+        "compiled": 1.1282888846914947
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 0.13603341719135642,
+          "bytes_per_second": 1470.2269789978343,
+          "peak_memory_mib": 10.08945083618164,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.12819774961099029,
+          "bytes_per_second": 1560.0897879010363,
+          "peak_memory_mib": 8.5177001953125,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.10744620906189084,
+          "bytes_per_second": 1861.3965233970853,
+          "peak_memory_mib": 8.470794677734375,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.12592462496832013,
+          "bytes_per_second": 1588.251702558698,
+          "peak_memory_mib": 8.5177001953125,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.10770524991676211,
+          "bytes_per_second": 1856.919696621716,
+          "peak_memory_mib": 8.470794677734375,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.13398616714403033,
+          "bytes_per_second": 1492.6914043671923,
+          "peak_memory_mib": 10.08945083618164,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.10755820898339152,
+          "bytes_per_second": 1859.4582588380842,
+          "peak_memory_mib": 8.470794677734375,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.13495624996721745,
+          "bytes_per_second": 1481.961747222396,
+          "peak_memory_mib": 10.08945083618164,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.12605924997478724,
+          "bytes_per_second": 1586.5555287692212,
+          "peak_memory_mib": 8.5177001953125,
+          "output_sha256": "6733f055d64984f890b86a12bae03c118f44db484d738797a57e0194b5924153"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.13495624996721745,
+        "last": 0.12605924997478724,
+        "compiled": 0.10755820898339152
+      },
+      "speedup": {
+        "last": 1.0705779226372494,
+        "compiled": 1.254727567916797
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 5.065340875182301,
+          "bytes_per_second": 39.48401596818537,
+          "peak_memory_mib": 57.196152687072754,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.2885305001400411,
+          "bytes_per_second": 693.1676197245283,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.23612362472340465,
+          "bytes_per_second": 847.0139327832195,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.23646550020202994,
+          "bytes_per_second": 845.7893427545465,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.23556837532669306,
+          "bytes_per_second": 849.0103976080584,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.2510797092691064,
+          "bytes_per_second": 796.5597880537638,
+          "peak_memory_mib": 57.196152687072754,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.23571645794436336,
+          "bytes_per_second": 848.4770293265072,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.25128133315593004,
+          "bytes_per_second": 795.92064196783,
+          "peak_memory_mib": 57.196152687072754,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.234845208004117,
+          "bytes_per_second": 851.6247859589873,
+          "peak_memory_mib": 51.01025867462158,
+          "output_sha256": "7a5b13b0932d205e9c92803fbec4d6efaf1ef3bd5325cd715b5030e95c26e3d1"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.25128133315593004,
+        "last": 0.23646550020202994,
+        "compiled": 0.23571645794436336
+      },
+      "speedup": {
+        "last": 1.0626553680822015,
+        "compiled": 1.0660321954067395
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 0.3277298747561872,
+          "bytes_per_second": 610.2586776649181,
+          "peak_memory_mib": 65.45227432250977,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.26559320790693164,
+          "bytes_per_second": 753.0313051909196,
+          "peak_memory_mib": 57.905426025390625,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.23870595823973417,
+          "bytes_per_second": 837.8508918455169,
+          "peak_memory_mib": 57.592864990234375,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.2682822090573609,
+          "bytes_per_second": 745.4836483668523,
+          "peak_memory_mib": 57.905426025390625,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.2372017498128116,
+          "bytes_per_second": 843.1641004243456,
+          "peak_memory_mib": 57.592864990234375,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.28712208289653063,
+          "bytes_per_second": 696.5678083077763,
+          "peak_memory_mib": 65.45227432250977,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.23705308279022574,
+          "bytes_per_second": 843.6928878793998,
+          "peak_memory_mib": 57.592864990234375,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.2854257910512388,
+          "bytes_per_second": 700.7075263359666,
+          "peak_memory_mib": 65.45227432250977,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.2648200411349535,
+          "bytes_per_second": 755.2298502139387,
+          "peak_memory_mib": 57.905426025390625,
+          "output_sha256": "91e26004c43601038d7d834c925d8dd559130fa1b7955aff3538aa918b633ba4"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.28712208289653063,
+        "last": 0.26559320790693164,
+        "compiled": 0.2372017498128116
+      },
+      "speedup": {
+        "last": 1.0810595841635493,
+        "compiled": 1.2104551636870882
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 5.685795458033681,
+          "bytes_per_second": 35.17537721435481,
+          "peak_memory_mib": 125.48426532745361,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.43792045768350363,
+          "bytes_per_second": 456.70394358362023,
+          "peak_memory_mib": 117.25275421142578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.38782433327287436,
+          "bytes_per_second": 515.6973991605612,
+          "peak_memory_mib": 117.25080108642578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.38815654208883643,
+          "bytes_per_second": 515.2560328462182,
+          "peak_memory_mib": 117.25275421142578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.3859923342242837,
+          "bytes_per_second": 518.1450051383366,
+          "peak_memory_mib": 117.25080108642578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.4044790002517402,
+          "bytes_per_second": 494.46324747520566,
+          "peak_memory_mib": 125.48426532745361,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.38623562501743436,
+          "bytes_per_second": 517.8186242943596,
+          "peak_memory_mib": 117.25275421142578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.4035077500157058,
+          "bytes_per_second": 495.6534291899359,
+          "peak_memory_mib": 125.48426532745361,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.3873798749409616,
+          "bytes_per_second": 516.28908195213,
+          "peak_memory_mib": 117.25080108642578,
+          "output_sha256": "3dae04650ff3f2ba1954ec4e2068bac6b13ae2c333c08166526b00e63218940d"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.4044790002517402,
+        "last": 0.38815654208883643,
+        "compiled": 0.38623562501743436
+      },
+      "speedup": {
+        "last": 1.0420512251965808,
+        "compiled": 1.0472337973315702
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "seconds": 0.8319585002027452,
+          "bytes_per_second": 240.3966062625248,
+          "peak_memory_mib": 244.0597267150879,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.7263375837355852,
+          "bytes_per_second": 275.3540564036236,
+          "peak_memory_mib": 222.58270263671875,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.6873681251890957,
+          "bytes_per_second": 290.96490318776387,
+          "peak_memory_mib": 220.83261108398438,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.7297221659682691,
+          "bytes_per_second": 274.07691492366797,
+          "peak_memory_mib": 222.58270263671875,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.6826177919283509,
+          "bytes_per_second": 292.98972626396534,
+          "peak_memory_mib": 220.83261108398438,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "seconds": 0.789025790989399,
+          "bytes_per_second": 253.477138876804,
+          "peak_memory_mib": 244.0597267150879,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.6848727092146873,
+          "bytes_per_second": 292.0250687596108,
+          "peak_memory_mib": 220.83261108398438,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "seconds": 0.7990530831739306,
+          "bytes_per_second": 250.2962621776979,
+          "peak_memory_mib": 244.0597267150879,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.7315731658600271,
+          "bytes_per_second": 273.3834554536768,
+          "peak_memory_mib": 222.58270263671875,
+          "output_sha256": "08821cfc7f4865cbb35602ca2525ea56880a2a7a89b530e52ea05cc539fbf96c"
+        }
+      ],
+      "median_seconds": {
+        "reference": 0.7990530831739306,
+        "last": 0.7297221659682691,
+        "compiled": 0.6848727092146873
+      },
+      "speedup": {
+        "last": 1.0950100194827799,
+        "compiled": 1.1667176577822305
+      }
+    }
+  ]
+}

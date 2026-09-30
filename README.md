@@ -137,6 +137,8 @@ The initial untrained checkpoint can remain the best if training raises held-out
 `sample` and `evaluate` use the best checkpoint by default. Add
 `--checkpoint latest` to inspect the last completed step. `sample --temperature 0`
 uses greedy generation. `--top-k 0` samples from the whole vocabulary.
+The [sampling report](benchmarks/README.md#last-token-sampling) records speed
+for short and full prompts, CPU results, and checks against trained models.
 
 Loss is cross entropy in natural log units. Bits per byte divides that loss by
 `log(2)`. Lower values mean better prediction on the measured validation samples.

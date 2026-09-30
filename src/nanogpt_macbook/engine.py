@@ -346,8 +346,26 @@ def generate(
     model.eval()
     sequence = encode(prompt) or [10]
     generated = []
-    for _ in range(tokens):
-        logits = model(mx.array([sequence[-model.config.context :]], dtype=mx.int32))[0, -1]
+
+    def last_logits(inputs):
+        return model(inputs, last_token_only=True)[0, -1]
+
+    compiled_logits = None
+    compile_windows = mx.default_device() == mx.gpu
+    for index in range(tokens):
+        window = sequence[-model.config.context :]
+        # A full window keeps a fixed shape as generation continues. Sixteen
+        # remaining bytes amortize compilation in the Metal measurements.
+        # CPU sampling measured faster with the eager last-token path.
+        if (
+            compile_windows
+            and compiled_logits is None
+            and len(window) == model.config.context
+            and tokens - index >= 16
+        ):
+            compiled_logits = mx.compile(last_logits)
+        forward = compiled_logits or last_logits
+        logits = forward(mx.array([window], dtype=mx.int32))
         if temperature == 0:
             token = int(mx.argmax(logits).item())
         else:

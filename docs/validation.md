@@ -505,3 +505,21 @@ The site build contains 84 measured points. All 18 site checks pass. Browser
 checks cover ten widths from 240 to 1280 pixels. Charts fit at every width,
 markers keep their spacing, and value rows stay inside their cards. The
 memory control, CPU filter, and expanded table fit at 320 pixels.
+
+## Last-token sampling, 30 September 2026
+
+Source `e6892a1` has 297 passing CPU and Metal tests. The 38 sampling cases
+cover logits and parameter gradients, byte IDs, Unicode prompts, growing and
+sliding windows, and changed weights. Full Metal windows compile when at
+least sixteen bytes remain. CPU uses the eager last-token path.
+
+The [sampling report](../benchmarks/README.md#last-token-sampling) contains
+260 alternating benchmark pairs and 36 pairs from trained checkpoints. Every
+pair produces matching byte IDs. Raw receipts include timing, memory, model
+settings, and source hashes. Earlier measurements preserve the CPU regression
+that led to the final device choice. Source hashes, intervals, rates, paired
+ratios, and byte-match counts were checked independently before publication.
+
+All 18 site checks pass. The sampling note and existing 84-point history fit
+in browser checks from 240 to 1280 pixels. Both percentage comparisons remain
+visible, and markers keep their spacing.
