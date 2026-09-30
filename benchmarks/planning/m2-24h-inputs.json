@@ -1,0 +1,42 @@
+{
+  "format": "experiment-budget-inputs-v1",
+  "checked_at": "2026-09-30",
+  "hardware": {
+    "instance_type": "mac2-m2.metal",
+    "region": "us-west-2",
+    "currency": "USD",
+    "hourly_usd": 0.878,
+    "minimum_hours": 24,
+    "price_source": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/dedicatedhost-ondemand.json",
+    "price_publication": "2026-09-25T17:45:21Z",
+    "rate_code": "69FJPFBT74QA72EC.JRTCKXETXF.6YS6EN2CT7"
+  },
+  "reference_host": "GitHub macos-26, Apple Paravirtual device, 7 GiB",
+  "timing_scope": "Calibrate and compare on this worker workflow step; includes process startup, warmup, A/A, A/B, receipts, and checkout cleanup",
+  "reference_runs": [
+    {
+      "preset": "tiny",
+      "receipt": "benchmarks/ci/36750498161/comparison.json",
+      "url": "https://github.com/cenetex/nanogpt-macbook/actions/runs/36750498161/job/110007586243",
+      "started_at": "2026-09-30T17:19:29Z",
+      "completed_at": "2026-09-30T17:21:09Z",
+      "seconds": 100
+    },
+    {
+      "preset": "small",
+      "receipt": "benchmarks/ci/36750509324/comparison.json",
+      "url": "https://github.com/cenetex/nanogpt-macbook/actions/runs/36750509324/job/110008524985",
+      "started_at": "2026-09-30T17:21:37Z",
+      "completed_at": "2026-09-30T17:26:13Z",
+      "seconds": 276
+    },
+    {
+      "preset": "medium",
+      "receipt": "benchmarks/ci/36748450305/comparison.json",
+      "url": "https://github.com/cenetex/nanogpt-macbook/actions/runs/36748450305/job/110000564897",
+      "started_at": "2026-09-30T17:01:50Z",
+      "completed_at": "2026-09-30T17:11:36Z",
+      "seconds": 586
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -170,6 +171,8 @@ def sample(checkout, commit, preset, output):
 
 
 def compare(args):
+    started = time.perf_counter()
+    started_at = datetime.now(UTC).isoformat()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if (output / "comparison.json").exists():
@@ -261,6 +264,13 @@ def compare(args):
                 subprocess.run(
                     ["git", "worktree", "remove", "--force", str(checkout)], cwd=ROOT, check=True
                 )
+    report["timing"] = {
+        "started_at": started_at,
+        "completed_at": datetime.now(UTC).isoformat(),
+        "elapsed_seconds": time.perf_counter() - started,
+        "scope": "probe, checkouts, all fresh processes, warmup, A/A, A/B, receipts, cleanup",
+    }
+    save(output / "comparison.json", report)
     lines = [
         "# Mac GPU benchmark",
         "",
