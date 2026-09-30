@@ -70,7 +70,9 @@ def compare(preset, pairs, steps, warmup):
                 }
             )
         ratios.append(rates["grouped"] / rates["native"])
-        print(f"{preset} pair {pair + 1:2}: grouped / native {ratios[-1]:.4f}", flush=True)
+        if (pair + 1) % max(1, pairs // 10) == 0 or pair + 1 == pairs:
+            median = statistics.median(ratios)
+            print(f"{preset} pair {pair + 1:3}: median grouped / native {median:.4f}", flush=True)
     return {
         "preset": preset,
         "model_config": asdict(config),
@@ -85,14 +87,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--preset", choices=(*PRESETS, "all"), default="all")
-    parser.add_argument("--pairs", type=int, default=10)
-    parser.add_argument("--steps", type=int, default=25)
+    parser.add_argument("--pairs", type=int, default=200)
+    parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=20)
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
     if args.out.exists():
         parser.error("Choose a new output path")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     # Both compiled models stay alive during each comparison.
     select_device("gpu", 4)
     receipt = {
