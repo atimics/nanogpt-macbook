@@ -1,0 +1,758 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "ec6fb8305be54634a493111b38cdf784caa632cbcee580698e7d4cc37992f7f2",
+    "commit": "8bff3c9d4f9061baaeac69f74be881cb6122c17b",
+    "source_dirty": false
+  },
+  "runner_source": "import gc\nimport json\nfrom dataclasses import replace\nfrom pathlib import Path\nfrom unittest.mock import patch\n\nimport mlx.core as mx\nimport numpy as np\n\nfrom nanogpt_macbook import checkpoint, engine\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.data import prepare\n\n\nout = Path('/private/tmp/ngpt-updates-8bff3c9-learning.json')\nassert not out.exists()\ndata = Path('/private/tmp/ngpt-updates-8bff3c9-story-v20')\nprepare(Path('src/nanogpt_macbook/demo.txt'), data, validation_fraction=0.2)\nengine.select_device('gpu', 2)\nrecord = dict(source=source_info(), runner_source=Path(__file__).read_text(), method=dict(preset='medium', steps=100, seeds=[11,29,1337], eval_every=20, eval_batches=4, queue=2, memory_gib=2, source='bundled demo.txt', validation_fraction=0.2), results=[])\nconfig, training = PRESETS['medium']\nupdated = engine.update_parameters\n\n\ndef native(model, optimizer, gradients):\n    optimizer.update(model, gradients)\n\n\nfor index, seed in enumerate([11,29,1337]):\n    paths = [('reference',native),('updated',updated)]\n    if index % 2:\n        paths.reverse()\n    result = dict(seed=seed,runs={})\n    for name, implementation in paths:\n        gc.collect()\n        mx.clear_cache()\n        run = Path(f'/private/tmp/ngpt-updates-8bff3c9-v20-{seed}-{name}')\n        assert not run.exists()\n        with patch.object(engine,'update_parameters',implementation):\n            state = engine.train(data,run,config,replace(training,seed=seed),100,eval_every=20,eval_batches=4,log_every=20,report=lambda _:None)\n        latest,_ = checkpoint.read(run)\n        rows = [json.loads(line) for line in (run/'metrics.jsonl').read_text().splitlines()]\n        evaluations = [row for row in rows if 'val_loss' in row]\n        result['runs'][name] = dict(path=str(run),checkpoint=str(latest),state=state,metrics=rows,final_val_loss=evaluations[-1]['val_loss'])\n        print(seed,name,'final validation',evaluations[-1]['val_loss'],flush=True)\n    differences = []\n    for file in ['model.safetensors','optimizer.safetensors','random.safetensors']:\n        a = mx.load(str(Path(result['runs']['reference']['checkpoint'])/file))\n        b = mx.load(str(Path(result['runs']['updated']['checkpoint'])/file))\n        assert a.keys()==b.keys()\n        maximum, changed, total = 0,0,0\n        for key in a:\n            aa,bb = np.array(a[key]),np.array(b[key])\n            assert aa.shape==bb.shape and aa.dtype==bb.dtype\n            changed += int(np.count_nonzero(aa!=bb))\n            total += aa.size\n            maximum = max(maximum,float(np.max(np.abs(aa.astype(float)-bb.astype(float)),initial=0)))\n        differences.append(dict(file=file,elements=total,changed_elements=changed,max_abs_difference=maximum))\n    result['differences'] = differences\n    result['final_validation_difference'] = result['runs']['updated']['final_val_loss']-result['runs']['reference']['final_val_loss']\n    record['results'].append(result)\n    out.write_text(json.dumps(record,indent=2)+'\\n')\n    print(seed,differences,flush=True)\n",
+  "method": {
+    "preset": "medium",
+    "steps": 100,
+    "seeds": [
+      11,
+      29,
+      1337
+    ],
+    "eval_every": 20,
+    "eval_batches": 4,
+    "queue": 2,
+    "memory_gib": 2,
+    "source": "bundled demo.txt",
+    "validation_fraction": 0.2
+  },
+  "results": [
+    {
+      "seed": 11,
+      "runs": {
+        "reference": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-11-reference",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-11-reference/checkpoints/step-00000100-c1869665",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 11
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.3999151587486267,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.451176881790161,
+              "bits_per_byte": 3.5363007317003383
+            },
+            "train_loss": 2.15437912940979,
+            "elapsed_seconds": 6.008174499962479
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.4494301080703735,
+              "bits_per_byte": 7.861865792584136
+            },
+            {
+              "step": 20,
+              "train_loss": 2.5063867568969727,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 32876.46825393795,
+              "peak_memory_mib": 1886.4126472473145
+            },
+            {
+              "step": 20,
+              "val_loss": 2.6362987756729126,
+              "bits_per_byte": 3.8033751699649567
+            },
+            {
+              "step": 40,
+              "train_loss": 2.280970573425293,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 40459.13775867544,
+              "peak_memory_mib": 1886.415126800537
+            },
+            {
+              "step": 40,
+              "val_loss": 2.4383742213249207,
+              "bits_per_byte": 3.517830396936951
+            },
+            {
+              "step": 60,
+              "train_loss": 2.2473535537719727,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 30044.249438375387,
+              "peak_memory_mib": 1886.415126800537
+            },
+            {
+              "step": 60,
+              "val_loss": 2.403418481349945,
+              "bits_per_byte": 3.4673999242244493
+            },
+            {
+              "step": 80,
+              "train_loss": 2.230428457260132,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 35065.86496436476,
+              "peak_memory_mib": 1886.418056488037
+            },
+            {
+              "step": 80,
+              "val_loss": 2.3999151587486267,
+              "bits_per_byte": 3.462345698080893
+            },
+            {
+              "step": 100,
+              "train_loss": 2.15437912940979,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 37822.516666297866,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.451176881790161,
+              "bits_per_byte": 3.5363007317003383
+            }
+          ],
+          "final_val_loss": 2.451176881790161
+        },
+        "updated": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-11-updated",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-11-updated/checkpoints/step-00000100-86d639b1",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 11
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.3999151587486267,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.451176881790161,
+              "bits_per_byte": 3.5363007317003383
+            },
+            "train_loss": 2.15437912940979,
+            "elapsed_seconds": 5.714425583835691
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.4494301080703735,
+              "bits_per_byte": 7.861865792584136
+            },
+            {
+              "step": 20,
+              "train_loss": 2.5063867568969727,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 40865.01605866415,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 20,
+              "val_loss": 2.636298716068268,
+              "bits_per_byte": 3.8033750839736316
+            },
+            {
+              "step": 40,
+              "train_loss": 2.280970573425293,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 35423.371336482174,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 40,
+              "val_loss": 2.4383742809295654,
+              "bits_per_byte": 3.517830482928276
+            },
+            {
+              "step": 60,
+              "train_loss": 2.2473535537719727,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 33758.255684702526,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 60,
+              "val_loss": 2.403418481349945,
+              "bits_per_byte": 3.4673999242244493
+            },
+            {
+              "step": 80,
+              "train_loss": 2.230428695678711,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 37195.43455026673,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 80,
+              "val_loss": 2.3999151587486267,
+              "bits_per_byte": 3.462345698080893
+            },
+            {
+              "step": 100,
+              "train_loss": 2.15437912940979,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 36857.10681897871,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.451176881790161,
+              "bits_per_byte": 3.5363007317003383
+            }
+          ],
+          "final_val_loss": 2.451176881790161
+        }
+      },
+      "differences": [
+        {
+          "file": "model.safetensors",
+          "elements": 14463744,
+          "changed_elements": 13631823,
+          "max_abs_difference": 2.384185791015625e-07
+        },
+        {
+          "file": "optimizer.safetensors",
+          "elements": 28927490,
+          "changed_elements": 28502412,
+          "max_abs_difference": 2.491287887096405e-08
+        },
+        {
+          "file": "random.safetensors",
+          "elements": 2,
+          "changed_elements": 0,
+          "max_abs_difference": 0
+        }
+      ],
+      "final_validation_difference": 0.0
+    },
+    {
+      "seed": 29,
+      "runs": {
+        "updated": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-29-updated",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-29-updated/checkpoints/step-00000100-a0de6708",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 29
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.386831283569336,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.386831283569336,
+              "bits_per_byte": 3.4434696562441203
+            },
+            "train_loss": 2.1754777431488037,
+            "elapsed_seconds": 5.330572249833494
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.582664966583252,
+              "bits_per_byte": 8.05408306223421
+            },
+            {
+              "step": 20,
+              "train_loss": 2.527700424194336,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 45497.17758589174,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 20,
+              "val_loss": 2.6112120151519775,
+              "bits_per_byte": 3.767182624969435
+            },
+            {
+              "step": 40,
+              "train_loss": 2.25125789642334,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 39942.66204408595,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 40,
+              "val_loss": 2.4485520720481873,
+              "bits_per_byte": 3.5325139317023155
+            },
+            {
+              "step": 60,
+              "train_loss": 2.2335729598999023,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 38151.01990484818,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 60,
+              "val_loss": 2.40606027841568,
+              "bits_per_byte": 3.47121123175022
+            },
+            {
+              "step": 80,
+              "train_loss": 2.229538917541504,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 36932.50285567607,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 80,
+              "val_loss": 2.398848295211792,
+              "bits_per_byte": 3.4608065393469967
+            },
+            {
+              "step": 100,
+              "train_loss": 2.1754777431488037,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 37907.95473868411,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.386831283569336,
+              "bits_per_byte": 3.4434696562441203
+            }
+          ],
+          "final_val_loss": 2.386831283569336
+        },
+        "reference": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-29-reference",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-29-reference/checkpoints/step-00000100-3889355c",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 29
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.3868311047554016,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.3868311047554016,
+              "bits_per_byte": 3.443469398270144
+            },
+            "train_loss": 2.1754777431488037,
+            "elapsed_seconds": 5.523153249640018
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.582664966583252,
+              "bits_per_byte": 8.05408306223421
+            },
+            {
+              "step": 20,
+              "train_loss": 2.527700662612915,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 41126.750142572746,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 20,
+              "val_loss": 2.6112120151519775,
+              "bits_per_byte": 3.767182624969435
+            },
+            {
+              "step": 40,
+              "train_loss": 2.25125789642334,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 39340.017425037244,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 40,
+              "val_loss": 2.4485520720481873,
+              "bits_per_byte": 3.5325139317023155
+            },
+            {
+              "step": 60,
+              "train_loss": 2.2335729598999023,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 38734.7377393212,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 60,
+              "val_loss": 2.40606027841568,
+              "bits_per_byte": 3.47121123175022
+            },
+            {
+              "step": 80,
+              "train_loss": 2.229538917541504,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 32279.06257602802,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 80,
+              "val_loss": 2.398848295211792,
+              "bits_per_byte": 3.4608065393469967
+            },
+            {
+              "step": 100,
+              "train_loss": 2.1754777431488037,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 40403.36784750397,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.3868311047554016,
+              "bits_per_byte": 3.443469398270144
+            }
+          ],
+          "final_val_loss": 2.3868311047554016
+        }
+      },
+      "differences": [
+        {
+          "file": "model.safetensors",
+          "elements": 14463744,
+          "changed_elements": 13595861,
+          "max_abs_difference": 2.384185791015625e-07
+        },
+        {
+          "file": "optimizer.safetensors",
+          "elements": 28927490,
+          "changed_elements": 28419350,
+          "max_abs_difference": 2.514570951461792e-08
+        },
+        {
+          "file": "random.safetensors",
+          "elements": 2,
+          "changed_elements": 0,
+          "max_abs_difference": 0
+        }
+      ],
+      "final_validation_difference": 1.7881393432617188e-07
+    },
+    {
+      "seed": 1337,
+      "runs": {
+        "reference": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-1337-reference",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-1337-reference/checkpoints/step-00000100-07e92635",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 1337
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.3933618664741516,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.4171335697174072,
+              "bits_per_byte": 3.487186614197541
+            },
+            "train_loss": 2.133345127105713,
+            "elapsed_seconds": 5.359447999857366
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.649631500244141,
+              "bits_per_byte": 8.150695348252297
+            },
+            {
+              "step": 20,
+              "train_loss": 2.632274627685547,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 45514.969373383276,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 20,
+              "val_loss": 2.682925045490265,
+              "bits_per_byte": 3.8706426582056017
+            },
+            {
+              "step": 40,
+              "train_loss": 2.3120663166046143,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 38992.50636190081,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 40,
+              "val_loss": 2.4569209218025208,
+              "bits_per_byte": 3.5445876297408376
+            },
+            {
+              "step": 60,
+              "train_loss": 2.201892137527466,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 37429.13644307954,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 60,
+              "val_loss": 2.4106696248054504,
+              "bits_per_byte": 3.4778611129284815
+            },
+            {
+              "step": 80,
+              "train_loss": 2.2338201999664307,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 38913.57867746936,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 80,
+              "val_loss": 2.3933618664741516,
+              "bits_per_byte": 3.452891295815012
+            },
+            {
+              "step": 100,
+              "train_loss": 2.133345127105713,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 39131.00696236728,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.4171335697174072,
+              "bits_per_byte": 3.487186614197541
+            }
+          ],
+          "final_val_loss": 2.4171335697174072
+        },
+        "updated": {
+          "path": "/private/tmp/ngpt-updates-8bff3c9-v20-1337-updated",
+          "checkpoint": "/private/tmp/ngpt-updates-8bff3c9-v20-1337-updated/checkpoints/step-00000100-bd48eb8d",
+          "state": {
+            "format": 1,
+            "step": 100,
+            "model_config": {
+              "context": 512,
+              "layers": 8,
+              "heads": 8,
+              "width": 384,
+              "vocab_size": 256
+            },
+            "train_config": {
+              "batch_size": 4,
+              "accumulation": 1,
+              "learning_rate": 0.0006,
+              "min_learning_rate": 6e-05,
+              "warmup_steps": 20,
+              "decay_steps": 2000,
+              "weight_decay": 0.1,
+              "grad_clip": 1.0,
+              "seed": 1337
+            },
+            "dataset": {
+              "tokenizer": "utf8-bytes-v1",
+              "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+              "train_sha256": "1e86f991e0deab91c67d625a491d6732b47da01f96e2dbf047bbe9c79a76fe12",
+              "val_sha256": "d51c3a6a2e965f70d85fa41113fc841fa15917822e1416845762ab43e501cf45"
+            },
+            "data_path": "/private/tmp/ngpt-updates-8bff3c9-story-v20",
+            "best_val_loss": 2.3933616280555725,
+            "execution": "pipelined",
+            "validation": {
+              "val_loss": 2.41713285446167,
+              "bits_per_byte": 3.487185582301636
+            },
+            "train_loss": 2.133345603942871,
+            "elapsed_seconds": 5.424164791125804
+          },
+          "metrics": [
+            {
+              "step": 0,
+              "val_loss": 5.649631500244141,
+              "bits_per_byte": 8.150695348252297
+            },
+            {
+              "step": 20,
+              "train_loss": 2.632274627685547,
+              "learning_rate": 0.0006,
+              "bytes_per_second": 42673.19543128932,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 20,
+              "val_loss": 2.682925045490265,
+              "bits_per_byte": 3.8706426582056017
+            },
+            {
+              "step": 40,
+              "train_loss": 2.3120663166046143,
+              "learning_rate": 0.00059987731896145,
+              "bytes_per_second": 39757.89361378032,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 40,
+              "val_loss": 2.456920862197876,
+              "bits_per_byte": 3.544587543749512
+            },
+            {
+              "step": 60,
+              "train_loss": 2.201892375946045,
+              "learning_rate": 0.0005994832342015658,
+              "bytes_per_second": 38847.83357327395,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 60,
+              "val_loss": 2.4106693863868713,
+              "bits_per_byte": 3.47786076896318
+            },
+            {
+              "step": 80,
+              "train_loss": 2.2338201999664307,
+              "learning_rate": 0.0005988178026679564,
+              "bytes_per_second": 38738.81175166087,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 80,
+              "val_loss": 2.3933616280555725,
+              "bits_per_byte": 3.45289095184971
+            },
+            {
+              "step": 100,
+              "train_loss": 2.133345603942871,
+              "learning_rate": 0.0005978816943937696,
+              "bytes_per_second": 36690.875958866076,
+              "peak_memory_mib": 1886.418544769287
+            },
+            {
+              "step": 100,
+              "val_loss": 2.41713285446167,
+              "bits_per_byte": 3.487185582301636
+            }
+          ],
+          "final_val_loss": 2.41713285446167
+        }
+      },
+      "differences": [
+        {
+          "file": "model.safetensors",
+          "elements": 14463744,
+          "changed_elements": 14020000,
+          "max_abs_difference": 3.5762786865234375e-07
+        },
+        {
+          "file": "optimizer.safetensors",
+          "elements": 28927490,
+          "changed_elements": 28809912,
+          "max_abs_difference": 1.9744038581848145e-07
+        },
+        {
+          "file": "random.safetensors",
+          "elements": 2,
+          "changed_elements": 0,
+          "max_abs_difference": 0
+        }
+      ],
+      "final_validation_difference": -7.152557373046875e-07
+    }
+  ]
+}
