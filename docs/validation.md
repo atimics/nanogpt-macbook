@@ -124,3 +124,43 @@ percentages remain. A temporary 60-point-per-series layout test also fits at
 320 pixels with all links present. CPU filtering, memory selection, and
 keyboard expansion of the results passed. The eight site tests, Ruff, and
 JavaScript syntax check pass.
+
+## LayerNorm gradient update, 30 September 2026
+
+Source `b3380d8` reduces weight and bias gradient buffers before writing them
+to device memory. Four rows share each Metal threadgroup. The forward operation,
+float32 weights, model configuration, optimizer, and checkpoint layout stay the
+same. Source `2c34805` adds a repeatable comparison tool and shares the same
+training-source hash.
+
+All 99 local tests pass. The new cases compare eager and compiled values and all
+three gradients with native MLX, cover strided arrays and odd row counts, check
+float64 finite differences with constant and offset inputs, and compare every
+gradient in two-layer GPTs at widths 32, 128, 256, and 384. CPU, half precision,
+wide inputs, and optional affine parameters exercise the native path. Existing
+tests cover learning, checkpoint resume, and gradient accumulation.
+
+Standard receipts at `9060ccc` and `b3380d8` record these GPU medians:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny | 295,575 | 246,194 | 149.4 / 146.9 MiB |
+| small | 82,462 | 84,718 | 1033.1 / 1011.0 MiB |
+| medium | 33,115 | 30,315 | 2033.1 / 1907.5 MiB |
+
+The CPU control changed from 17,881 to 16,474 bytes/s with the same native CPU
+math. Its peak stayed at 109.3 MiB. Machine timing varied enough to change the
+apparent direction of the GPU comparison. All standard receipts remain in the
+published time series.
+
+An additional comparison at `2c34805` alternates native and grouped paths in 200
+pairs of complete single steps. Median gains were +4.2% for tiny, -0.4% for small,
+and +3.3% for medium. Medium improved in 181 of 200 pairs. The total-time changes
+were +1.4%, -1.2%, and +3.5%. This diagnostic uses two live models and a 4 GiB
+memory/cache limit. The standard memory measurements use one model and 2 GiB.
+The [protocol and raw receipts](../benchmarks/README.md#layernorm-comparison)
+include both the adjacent-step and earlier block comparisons.
+
+The 300-step story run reached validation loss 2.1712157, matching the previous
+2.1712109 to four decimal places. Its [learning receipt](../benchmarks/learning/demo-2c34805.json)
+contains all reported metrics and the source hash.

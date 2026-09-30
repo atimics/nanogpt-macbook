@@ -91,3 +91,48 @@ python -m http.server --directory _site 8765
 The site uses local CSS, JavaScript, and an SVG plot. GitHub Actions builds the
 page on pull requests and deploys `main` to GitHub Pages. The site and source
 use the MIT-0 license.
+
+## LayerNorm comparison
+
+The LayerNorm update combines four rows of weight and bias gradients in each
+Metal threadgroup. Float32 training uses smaller partial-sum buffers. The
+forward calculation uses native MLX. CPU training also uses native MLX gradients.
+The kernel applies to widths up to 512, including all three presets.
+
+The normal time series includes a fresh baseline at `9060ccc`, GPU results at
+`b3380d8`, and a CPU control at `2c34805`. The last two commits share the same
+training-source hash. These runs showed large timing swings, including a 7.9%
+fall in CPU throughput with the same native CPU math. The page keeps their raw
+measured speeds and trial ranges.
+
+For a closer comparison, run both paths in adjacent complete training steps:
+
+```bash
+uv run python scripts/compare_normalization.py \
+  --out benchmarks/diagnostics/my-layernorm.json
+```
+
+This diagnostic keeps two models alive and uses a 4 GiB allocator and cache
+limit. Each path gets 20 warmup steps. It then measures 200 pairs, with one
+complete step per path in each pair. The first path alternates on each pair.
+Model settings, batches, seeds, float32 math, and step synchronization match.
+The reported change is the median grouped/native throughput ratio minus one.
+This protocol has a separate receipt from the time-series protocol.
+
+| Preset | Median change | Pairs with a gain | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | +4.2% | 119 / 200 | 149.4 / 146.9 MiB |
+| small / Metal | -0.4% | 95 / 200 | 1033.1 / 1011.0 MiB |
+| medium / Metal | +3.3% | 181 / 200 | 2033.1 / 1907.5 MiB |
+
+Memory comes from the standard single-model benchmark. The adjacent-step
+comparison gives the clearest speed gain for medium. Tiny has more variation;
+small is roughly level. Ratios from total elapsed time were +1.4%, -1.2%, and
++3.5%, respectively. Both calculations are available in the raw timings.
+
+The [adjacent-step receipt](diagnostics/layernorm-2c34805-adjacent.json) records
+every measured step. The earlier [25-step block comparison](diagnostics/layernorm-efebdd0-blocks.json)
+also remains available. Its median changes were +7.5%, -2.4%, and +2.8%; shorter
+pairs reduce the time between each comparison. The story learning check reached
+validation loss 2.1712 after 300 steps. Its [receipt](learning/demo-2c34805.json)
+records the source hash and metrics.
