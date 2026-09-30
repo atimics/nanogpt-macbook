@@ -6,12 +6,14 @@ on:
       - 'site/**'
       - 'benchmarks/**'
       - 'scripts/build_site.py'
+      - 'tests/site_labels.test.cjs'
       - '.github/workflows/pages.yml'
   pull_request:
     paths:
       - 'site/**'
       - 'benchmarks/**'
       - 'scripts/build_site.py'
+      - 'tests/site_labels.test.cjs'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 permissions:
@@ -28,6 +30,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/build_site.py
+      - run: node --test tests/site_labels.test.cjs
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
