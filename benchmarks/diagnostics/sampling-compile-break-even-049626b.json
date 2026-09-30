@@ -1,0 +1,1675 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "989a68b97ec99e40c493a671b0d83f87d88d7a9f389de5eb1d59ea4af06b0165",
+    "commit": "049626bd1aedcf54b53e8af58c93642ec39e489c",
+    "source_dirty": false
+  },
+  "results": [
+    {
+      "preset": "tiny",
+      "steps": 1,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.001930207945406437
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.004095999989658594
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.002171332947909832
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.001541375182569027
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.0011567077599465847
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.001184666994959116
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.0012036249972879887
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.0015072082169353962
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.0014823749661445618
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.0011207088828086853
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.0012030000798404217
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.0006912499666213989
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.0006869998760521412
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.001959916204214096
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.001918707974255085
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.0006931251846253872
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.000680750235915184
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.0010848338715732098
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.0011018752120435238
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.0006887498311698437
+        }
+      ],
+      "medians": {
+        "last": 0.000924916472285986,
+        "compiled": 0.0012033125385642052
+      },
+      "speedup": 0.7686419302084212
+    },
+    {
+      "preset": "tiny",
+      "steps": 4,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.003465500194579363
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.005996416788548231
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.005913750268518925
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.006379042286425829
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.00623316690325737
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.0026832912117242813
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.002656499855220318
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.002709041815251112
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.00269791716709733
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.002747457940131426
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.002728166989982128
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.002694500144571066
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.0026131668128073215
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.006120374891906977
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.002888042014092207
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.002620500046759844
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.002613124903291464
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.002647124696522951
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.0027797496877610683
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.0026689162477850914
+        }
+      ],
+      "medians": {
+        "last": 0.002696208655834198,
+        "compiled": 0.002763603813946247
+      },
+      "speedup": 0.9756133068814183
+    },
+    {
+      "preset": "tiny",
+      "steps": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.010202208068221807
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.009206084068864584
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.009174082893878222
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.010095542296767235
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.010160583071410656
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.009045000188052654
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.00923662493005395
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.010290749836713076
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.010142458137124777
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.009227000176906586
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.009074958972632885
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.010216250084340572
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.010179209057241678
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.009213790763169527
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.008988958317786455
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.010211999993771315
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.010383083019405603
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.009128374978899956
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.00923570804297924
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.010151125025004148
+        }
+      ],
+      "medians": {
+        "last": 0.010190708562731743,
+        "compiled": 0.009190083481371403
+      },
+      "speedup": 1.108880956673423
+    },
+    {
+      "preset": "tiny",
+      "steps": 32,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.020217583049088717
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.01771799987182021
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.01775787491351366
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.02040458330884576
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.020166832953691483
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.017471040599048138
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.017579874955117702
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.020071583334356546
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.020635167136788368
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.018116042017936707
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.017978708259761333
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.021005250047892332
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.020976875443011522
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.01849183300510049
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.01839612517505884
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.02100008400157094
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.020670250058174133
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.017977459356188774
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.017792625352740288
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.0207390827126801
+        }
+      ],
+      "medians": {
+        "last": 0.02065270859748125,
+        "compiled": 0.01788504235446453
+      },
+      "speedup": 1.1547475364141837
+    },
+    {
+      "preset": "tiny",
+      "steps": 64,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.052686041221022606
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.03561608400195837
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.03564875014126301
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.04148004204034805
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.04125937493517995
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.03530037496238947
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.03495437512174249
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.04131295811384916
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.04120633332058787
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.034793333150446415
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.03519024979323149
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.04128670785576105
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.041238249745219946
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.03513545822352171
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.03499720897525549
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.04066258389502764
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.0412017498165369
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.03479199996218085
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.03425600007176399
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.04028233280405402
+        }
+      ],
+      "medians": {
+        "last": 0.04124881234019995,
+        "compiled": 0.0350663335993886
+      },
+      "speedup": 1.1763081025647673
+    },
+    {
+      "preset": "small",
+      "steps": 1,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.0014362079091370106
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.002023249864578247
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.0021334169432520866
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.0014533749781548977
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.001405125018209219
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.0019311667419970036
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.0019599581137299538
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.0014249593950808048
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.001766290981322527
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.004528624936938286
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.0019003748893737793
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.0014304588548839092
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.0014021247625350952
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.0019165421836078167
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.0019027912057936192
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.001406166236847639
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.0014126668684184551
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.0019425000064074993
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.004603832960128784
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.0015095002017915249
+        }
+      ],
+      "medians": {
+        "last": 0.001427709124982357,
+        "compiled": 0.0019512290600687265
+      },
+      "speedup": 0.7316973461496469
+    },
+    {
+      "preset": "small",
+      "steps": 4,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.005469541996717453
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.005477083846926689
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.005532874725759029
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.005415415856987238
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.005429292097687721
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.005583249963819981
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.005535624921321869
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.005480207968503237
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.005467374809086323
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.005601583048701286
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.005529666785150766
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.005468000192195177
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.005637625232338905
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.005442958325147629
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.0054747918620705605
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.005429584067314863
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.005532332696020603
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.005622083321213722
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.0054818326607346535
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.005457250401377678
+        }
+      ],
+      "medians": {
+        "last": 0.00546768750064075,
+        "compiled": 0.005531270755454898
+      },
+      "speedup": 0.9885047654281898
+    },
+    {
+      "preset": "small",
+      "steps": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.021368375048041344
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.019489040598273277
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.019323958083987236
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.020922542084008455
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.02157091721892357
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.019788499921560287
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.01971366722136736
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.021597624756395817
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.021516166627407074
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.019696124829351902
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.019617166835814714
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.02154208393767476
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.0212885825894773
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.01983433263376355
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.020070083905011415
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.021384666673839092
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.021371624898165464
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.019765250384807587
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.020103749819099903
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.021456167101860046
+        }
+      ],
+      "medians": {
+        "last": 0.02142041688784957,
+        "compiled": 0.019739458803087473
+      },
+      "speedup": 1.0851572528674989
+    },
+    {
+      "preset": "small",
+      "steps": 32,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.04270662507042289
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.0391937498934567
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.03906850004568696
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.04289079178124666
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.04187779175117612
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.03841241681948304
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.03821541694924235
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.04278579168021679
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.04274499975144863
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.03884991630911827
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.038780124858021736
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.042964667081832886
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.04291229182854295
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.03887350019067526
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.039096207823604345
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.04272583406418562
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.04287949996069074
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.03839495778083801
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.037402874790132046
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.042330417316406965
+        }
+      ],
+      "medians": {
+        "last": 0.04276539571583271,
+        "compiled": 0.038815020583570004
+      },
+      "speedup": 1.1017743923066439
+    },
+    {
+      "preset": "small",
+      "steps": 64,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.08514170767739415
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.07588295917958021
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.07644008379429579
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.08574808435514569
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.08568258304148912
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.07424054108560085
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.07409629179164767
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.08526966674253345
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.08522795839235187
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.07637741696089506
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.07758420798927546
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.0855376673862338
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.08515420882031322
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.0775571670383215
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.07458979124203324
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.0851478329859674
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.08576945820823312
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.07628441695123911
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.07529466692358255
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.08532024966552854
+        }
+      ],
+      "medians": {
+        "last": 0.08529495820403099,
+        "compiled": 0.07608368806540966
+      },
+      "speedup": 1.121067608219811
+    },
+    {
+      "preset": "medium",
+      "steps": 1,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.003720917273312807
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.007545208092778921
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.004505333956331015
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.0037363748997449875
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.003754790872335434
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.004481417126953602
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.004429500084370375
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.003835457842797041
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.003773667383939028
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.0046961670741438866
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.004522208124399185
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.003699749708175659
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.0036755423061549664
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.0044984580017626286
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.004540124908089638
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.0037677078507840633
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.003792000003159046
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.004494000226259232
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.004497875459492207
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.0037221251986920834
+        }
+      ],
+      "medians": {
+        "last": 0.0037455828860402107,
+        "compiled": 0.004501895979046822
+      },
+      "speedup": 0.8320012064857296
+    },
+    {
+      "preset": "medium",
+      "steps": 4,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.014631041325628757
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.014710542280226946
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.01484900014474988
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.014784916769713163
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.014884916134178638
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.014747416134923697
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.014761124737560749
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.014656791929155588
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.014781500212848186
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.014724832959473133
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.014806250110268593
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.014910458121448755
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.014629249926656485
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.014735457953065634
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.0147510408423841
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.014742165803909302
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.014393167104572058
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.014636083971709013
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.014849207829684019
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.014715457800775766
+        }
+      ],
+      "medians": {
+        "last": 0.014728811802342534,
+        "compiled": 0.014749228488653898
+      },
+      "speedup": 0.9986157454725805
+    },
+    {
+      "preset": "medium",
+      "steps": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.057327291928231716
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.055961749982088804
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.05440779170021415
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.057482291013002396
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.058361874893307686
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.05567333288490772
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.05549616692587733
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.05880145775154233
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.05865187477320433
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.05545866675674915
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.05451079085469246
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.05837829224765301
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.05840958375483751
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.055344624910503626
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.055336708668619394
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.05864308262243867
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.05888541601598263
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.055759291630238295
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.05573854222893715
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.05792104173451662
+        }
+      ],
+      "medians": {
+        "last": 0.05839393800124526,
+        "compiled": 0.05547741684131324
+      },
+      "speedup": 1.0525713222782955
+    },
+    {
+      "preset": "medium",
+      "steps": 32,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.11542166722938418
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.11000049998983741
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.11053470801562071
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.11657441686838865
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.11642879201099277
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.11104650003835559
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.10912416689097881
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.11574925016611814
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.11503558326512575
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.11071225022897124
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.11012416612356901
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.1162941250950098
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.11456608260050416
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.11044462490826845
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.1108267093077302
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.11656100023537874
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.11497300025075674
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.1102857906371355
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.10825762478634715
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.116887291893363
+        }
+      ],
+      "medians": {
+        "last": 0.11602168763056397,
+        "compiled": 0.11036520777270198
+      },
+      "speedup": 1.0512523826305076
+    },
+    {
+      "preset": "medium",
+      "steps": 64,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "last",
+          "seconds": 0.23163187457248569
+        },
+        {
+          "pair": 1,
+          "path": "compiled",
+          "seconds": 0.22010162472724915
+        },
+        {
+          "pair": 2,
+          "path": "compiled",
+          "seconds": 0.21992191718891263
+        },
+        {
+          "pair": 2,
+          "path": "last",
+          "seconds": 0.2326276251114905
+        },
+        {
+          "pair": 3,
+          "path": "last",
+          "seconds": 0.23276091599836946
+        },
+        {
+          "pair": 3,
+          "path": "compiled",
+          "seconds": 0.22088587516918778
+        },
+        {
+          "pair": 4,
+          "path": "compiled",
+          "seconds": 0.21765212481841445
+        },
+        {
+          "pair": 4,
+          "path": "last",
+          "seconds": 0.23178858309984207
+        },
+        {
+          "pair": 5,
+          "path": "last",
+          "seconds": 0.23281608428806067
+        },
+        {
+          "pair": 5,
+          "path": "compiled",
+          "seconds": 0.21749091614037752
+        },
+        {
+          "pair": 6,
+          "path": "compiled",
+          "seconds": 0.22019500005990267
+        },
+        {
+          "pair": 6,
+          "path": "last",
+          "seconds": 0.23365049995481968
+        },
+        {
+          "pair": 7,
+          "path": "last",
+          "seconds": 0.2312635420821607
+        },
+        {
+          "pair": 7,
+          "path": "compiled",
+          "seconds": 0.2168716248124838
+        },
+        {
+          "pair": 8,
+          "path": "compiled",
+          "seconds": 0.21845600008964539
+        },
+        {
+          "pair": 8,
+          "path": "last",
+          "seconds": 0.23136529233306646
+        },
+        {
+          "pair": 9,
+          "path": "last",
+          "seconds": 0.23337329179048538
+        },
+        {
+          "pair": 9,
+          "path": "compiled",
+          "seconds": 0.21923825005069375
+        },
+        {
+          "pair": 10,
+          "path": "compiled",
+          "seconds": 0.21791208302602172
+        },
+        {
+          "pair": 10,
+          "path": "last",
+          "seconds": 0.23261379171162844
+        }
+      ],
+      "medians": {
+        "last": 0.23262070841155946,
+        "compiled": 0.21884712507016957
+      },
+      "speedup": 1.0629370083658793
+    }
+  ]
+}
