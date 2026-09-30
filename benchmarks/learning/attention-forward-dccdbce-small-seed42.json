@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "source_commit": "dccdbce9c6184d9c1fe1688b5154be33cebd93d4",
+  "python_source_sha256": "6e77572946aef11d0f67c60330b8fa769bec66fc08367a9b0d9ae8e19aa81ea5",
+  "source_dirty": false,
+  "recorded_at": "2026-09-30T09:31:27.983479+00:00",
+  "chip": "Apple M4 Max",
+  "mlx": "0.32.3",
+  "device": "gpu",
+  "preset": "small",
+  "dtype": "float32",
+  "execution": "pipelined",
+  "model_config": {
+    "context": 256,
+    "layers": 6,
+    "heads": 8,
+    "width": 256,
+    "vocab_size": 256
+  },
+  "train_config": {
+    "batch_size": 8,
+    "accumulation": 1,
+    "learning_rate": 0.0006,
+    "min_learning_rate": 6e-05,
+    "warmup_steps": 20,
+    "decay_steps": 2000,
+    "weight_decay": 0.1,
+    "grad_clip": 1.0,
+    "seed": 42
+  },
+  "dataset": {
+    "format": 1,
+    "tokenizer": "utf8-bytes-v1",
+    "source_name": "demo.txt",
+    "source_sha256": "4a03023faf87edfc1e9b66cc609d85f38ff104fcce444faac3050a5c66792a42",
+    "vocab_size": 256,
+    "train_tokens": 4089,
+    "val_tokens": 455,
+    "train_sha256": "5469cfe0d6c1f14f392df065dd08b0b0b91cd5ab7d770606d66b318684971595",
+    "val_sha256": "b6951b5b775173a1739be89e09e0226182075ee3a51d82b15d2d2a6acec6e42d"
+  },
+  "command": "uv run nanogpt train --data data/demo --run runs/queue-small --preset small --seed 42 --steps 300 --eval-every 100 --eval-batches 10 --log-every 100 --device gpu",
+  "metrics": [
+    {
+      "step": 0,
+      "val_loss": 5.627326917648316,
+      "bits_per_byte": 8.1185166375522
+    },
+    {
+      "step": 100,
+      "train_loss": 2.2074978351593018,
+      "learning_rate": 0.0005978816943937696,
+      "bytes_per_second": 129764.10587577353,
+      "peak_memory_mib": 1546.381275177002
+    },
+    {
+      "step": 100,
+      "val_loss": 2.2704620361328125,
+      "bits_per_byte": 3.2755843200554673
+    },
+    {
+      "step": 200,
+      "train_loss": 1.9459292888641357,
+      "learning_rate": 0.0005891834706748625,
+      "bytes_per_second": 119478.55024119606,
+      "peak_memory_mib": 1546.38130569458
+    },
+    {
+      "step": 200,
+      "val_loss": 2.204565238952637,
+      "bits_per_byte": 3.180515337553162
+    },
+    {
+      "step": 300,
+      "train_loss": 1.4727566242218018,
+      "learning_rate": 0.0005739739820991847,
+      "bytes_per_second": 120933.39559443711,
+      "peak_memory_mib": 1546.38130569458
+    },
+    {
+      "step": 300,
+      "val_loss": 2.245137166976929,
+      "bits_per_byte": 3.239048256913112
+    }
+  ]
+}

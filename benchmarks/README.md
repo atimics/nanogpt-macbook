@@ -439,3 +439,71 @@ receipts for [tiny](learning/pipeline-29b81ad-tiny-sync.json),
 [queued small 42](learning/pipeline-29b81ad-small-queued-seed42.json)
 include all validation checkpoints. Focused tests also compare weights,
 optimizer state, batch RNG, accumulation, stop handling, and resume behavior.
+
+## Fused attention forward pass
+
+Commit `ac55ea0` combines the score matrix product and causal softmax for the
+small and medium Metal presets. Each threadgroup calculates eight query rows,
+normalizes the score tile in shared memory, and writes attention probabilities.
+This saves an intermediate score tensor and a kernel launch. The existing
+backward pass uses the saved probabilities. Float32 precision and the two-step
+training queue apply to both sides of the comparison.
+
+The fresh standard comparison uses `dccdbce` and `ac55ea0`, with one model,
+a 2 GiB memory/cache limit, 20 warmup steps, and three 100-step trials:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 485,082 | 480,910 | 268.0 / 268.0 MiB |
+| small / Metal | 166,335 | 173,784 | 1546.4 / 1454.8 MiB |
+| medium / Metal | 60,203 | 63,116 | 1947.2 / 1835.8 MiB |
+
+Small's trial ranges are separated. Medium's ranges overlap. Peak active
+memory falls by 91.6 MiB for small and 111.4 MiB for medium. Tiny uses its
+existing attention path and serves as a timing control.
+
+The paired comparison runs both attention implementations with queued updates:
+
+```bash
+uv run python scripts/compare_attention.py --baseline-ref dccdbce \
+  --queued --pairs 100 --steps 10 --warmup 20 \
+  --out benchmarks/diagnostics/my-attention-forward.json
+```
+
+Both models stay alive with a 4 GiB memory/cache limit. Their order alternates
+across 100 pairs of ten-step blocks. Each path gets 20 warmup steps. All loss
+and gradient-norm checks and the final GPU wait sit inside the timed blocks.
+The reference attention file, its hash, source commits, and all completion
+intervals are recorded in the [paired receipt](diagnostics/attention-forward-ac55ea0-blocks.json).
+
+| Preset | Median speed change | Total-time change | Pairs with a gain |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 0.0% | 0.0% | 50 / 100 |
+| small / Metal | +4.5% | +4.3% | 98 / 100 |
+| medium / Metal | +3.0% | +3.1% | 95 / 100 |
+
+The suite passes 217 tests on Apple Silicon. Twelve new cases compare the
+saved probabilities with a float64 reference across uniform, random, and
+larger scores. They check row sums and exact zeros above the causal boundary.
+Existing tests cover gradients against float64 and MLX, partial block sizes,
+sliced/reversed/broadcast tensors, compiled model updates, accumulation,
+queued training, stopping, and checkpoint resume.
+
+The learning check compares 300 queued steps on the bundled story for three
+small-model seeds. Final held-out loss is measured in nats:
+
+| Seed | Baseline final | Updated final | Difference |
+| --- | ---: | ---: | ---: |
+| 1337 | 2.2982645 | 2.2906660 | -0.0075985 |
+| 17 | 2.2989750 | 2.3002633 | +0.0012883 |
+| 42 | 2.2451372 | 2.2442262 | -0.0009109 |
+
+Both paths reach their best validation checkpoint at step 200 for each seed.
+The largest absolute final difference is 0.0076 nats. Best-checkpoint losses
+differ by at most 0.0022 nats. These short runs check
+learning behavior on the bundled story. Broader text quality needs broader data.
+The complete traces are in the baseline and updated receipts:
+
+- Seed 1337: [baseline](learning/attention-forward-dccdbce-small-seed1337.json), [updated](learning/attention-forward-ac55ea0-small-seed1337.json).
+- Seed 17: [baseline](learning/attention-forward-dccdbce-small-seed17.json), [updated](learning/attention-forward-ac55ea0-small-seed17.json).
+- Seed 42: [baseline](learning/attention-forward-dccdbce-small-seed42.json), [updated](learning/attention-forward-ac55ea0-small-seed42.json).

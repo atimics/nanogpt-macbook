@@ -375,3 +375,27 @@ fit on both axes. All 56 points and eight percentage badges remain present.
 A second audit passes 36 states with a 236-point history, including 60 later
 GPU-only commits. Browser error logs are clear. Six Node regressions, eight
 Python site tests, Ruff, and format checks pass.
+
+## Fused attention forward pass — 2026-09-30
+
+Source `ac55ea0` passed all 217 Apple Silicon tests, including twelve new
+float64 probability comparisons and existing output/gradient, causal-boundary,
+large-score, strided-layout, model-update, accumulation, queue, and resume
+checks. Ruff and formatting pass.
+
+The fresh standard GPU comparison records `dccdbce` and `ac55ea0`. Both source
+trees were clean. The new source hash is
+`12668f51bf2f3c5a214167bdf6dba39ef264ebccc6be57774b3cb5a28484e19f`.
+Small reaches 173,784 bytes/s and medium reaches 63,116 bytes/s. Peak active
+memory falls by 91.6 and 111.4 MiB, respectively.
+
+The 100-pair comparison uses alternating ten-step blocks with the two-step
+queue active for both implementations. Median gains are 4.5% for small and
+3.0% for medium; 98 and 95 pairs are faster. Tiny's control is level. The
+receipt includes the reference attention file hash and each completion
+interval, including all GPU work through each block's final wait.
+
+Three 300-step learning comparisons cover small-model seeds 1337, 17, and 42.
+The largest absolute final validation-loss difference is 0.0076 nats; the
+largest best-checkpoint difference is 0.0022 nats. The benchmark report links
+all six complete learning traces and the timing receipts.
