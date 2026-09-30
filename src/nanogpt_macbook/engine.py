@@ -18,6 +18,7 @@ from mlx.utils import tree_map
 from . import checkpoint
 from .config import ModelConfig, TrainConfig
 from .data import Dataset, decode, encode
+from .gradients import clip_grad_norm
 from .model import GPT, loss_fn
 
 
@@ -72,7 +73,7 @@ def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
                 grads if total_grads is None else tree_map(lambda a, b: a + b, total_grads, grads)
             )
         grads = tree_map(lambda grad: grad / accumulation, total_grads)
-        grads, norm = optim.clip_grad_norm(grads, grad_clip)
+        grads, norm = clip_grad_norm(grads, grad_clip)
         optimizer.learning_rate = rate
         optimizer.update(model, grads)
         return total_loss / accumulation, norm

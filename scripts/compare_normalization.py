@@ -14,6 +14,7 @@ import mlx.nn as nn
 import mlx.optimizers as optim
 import numpy as np
 
+from nanogpt_macbook import engine
 from nanogpt_macbook.benchmark import _step, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
@@ -22,12 +23,17 @@ from nanogpt_macbook.model import GPT
 from nanogpt_macbook.normalization import LayerNorm
 
 
-def compare(preset, pairs, steps, warmup):
+def compare(preset, pairs, steps, warmup, component="normalization"):
     config, training = PRESETS[preset]
     records = []
-    grouped = LayerNorm.__call__
-    for name, implementation in (("native", nn.LayerNorm.__call__), ("grouped", grouped)):
-        with patch.object(LayerNorm, "__call__", implementation):
+    if component == "clipping":
+        target, attribute = engine, "clip_grad_norm"
+        native, grouped = optim.clip_grad_norm, engine.clip_grad_norm
+    else:
+        target, attribute = LayerNorm, "__call__"
+        native, grouped = nn.LayerNorm.__call__, LayerNorm.__call__
+    for name, implementation in (("native", native), ("grouped", grouped)):
+        with patch.object(target, attribute, implementation):
             mx.random.seed(training.seed)
             rng = np.random.default_rng(training.seed)
             model = GPT(config)
@@ -83,8 +89,10 @@ def compare(preset, pairs, steps, warmup):
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(component="normalization"):
+    parser = argparse.ArgumentParser(
+        description=f"Compare native and grouped {component} in complete training steps."
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--preset", choices=(*PRESETS, "all"), default="all")
     parser.add_argument("--pairs", type=int, default=200)
@@ -105,7 +113,9 @@ def main():
         "chip": mx.device_info(mx.gpu)["device_name"],
         "mlx": mx.__version__,
         "method": {
-            "name": "alternating-layernorm-v1",
+            "name": "alternating-clipping-v1"
+            if component == "clipping"
+            else "alternating-layernorm-v1",
             "pairs": args.pairs,
             "steps_per_path_per_pair": args.steps,
             "warmup_steps_per_path": args.warmup,
@@ -120,7 +130,7 @@ def main():
     for preset in PRESETS if args.preset == "all" else [args.preset]:
         gc.collect()
         mx.clear_cache()
-        receipt["results"].append(compare(preset, args.pairs, args.steps, args.warmup))
+        receipt["results"].append(compare(preset, args.pairs, args.steps, args.warmup, component))
         write_json(args.out, receipt)
     print(f"Saved comparison to {args.out}")
 
