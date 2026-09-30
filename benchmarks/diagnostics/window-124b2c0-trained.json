@@ -1,0 +1,466 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "262f19922ff855f62df619da0064b16be8b85cfd525a98fecf4498d1b99d0f62",
+    "commit": "124b2c026ccba2b0dc54d4d344f4f5125d42fd28",
+    "source_dirty": false
+  },
+  "reference": {
+    "commit": "7f741e37a7c8d4b5fabb4f18308dfc0fd8d235af",
+    "files_sha256": {
+      "src/nanogpt_macbook/model.py": "fdf2046f4cbf50f9ec6e4dde2ea7720f9bc23e68d0ddad8c0772027707246eb2",
+      "src/nanogpt_macbook/engine.py": "d55fc3dca2078657b1635feb6e765b62bfa1a2fbd6b25e1db6d6e03d95dc534a"
+    },
+    "scope": "current shared operators with model and engine code from this commit"
+  },
+  "method": {
+    "generated_bytes": 200,
+    "temperatures": [
+      0,
+      0.8
+    ],
+    "seeds": [
+      9,
+      42,
+      1337
+    ],
+    "top_k": 40
+  },
+  "checkpoints": [
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "step": 300,
+      "weights_sha256": "a48d356a1b59b0a09e40dbc4ec253633410eb65fc50032a712cb8ba7b9784ccf"
+    },
+    {
+      "preset": "small",
+      "model_config": {
+        "context": 256,
+        "layers": 6,
+        "heads": 8,
+        "width": 256,
+        "vocab_size": 256
+      },
+      "step": 200,
+      "weights_sha256": "d428d30636edecbcd4624b153ccde5daf1b8d05b5420c077768228e2692e62c3"
+    },
+    {
+      "preset": "medium",
+      "model_config": {
+        "context": 512,
+        "layers": 8,
+        "heads": 8,
+        "width": 384,
+        "vocab_size": 256
+      },
+      "step": 100,
+      "weights_sha256": "5cd9d5eb74fed66712be81b8490a479ac13326938efccc7e64b018550b912824"
+    }
+  ],
+  "results": [
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810",
+        "updated": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810",
+        "updated": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810",
+        "updated": "a249d9e2f5a783abf41f366ebc6e3b304b0cf058343d7748e2f4cff7fddb6810"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "12f6d27e894c26ca0fcf3e6463378b0b04c9a6f35836dd82d2537ff71160e0ef",
+        "updated": "12f6d27e894c26ca0fcf3e6463378b0b04c9a6f35836dd82d2537ff71160e0ef"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "699d0a976152892b3836f36d685ed6da4f5168c8ce2c374ad62f462e6e66f6ea",
+        "updated": "699d0a976152892b3836f36d685ed6da4f5168c8ce2c374ad62f462e6e66f6ea"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "824c1c03fa208713d4c0c136c294b892361e953ae3b120bcd1045b2607df4657",
+        "updated": "824c1c03fa208713d4c0c136c294b892361e953ae3b120bcd1045b2607df4657"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691",
+        "updated": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691",
+        "updated": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691",
+        "updated": "0e04e09edaa5fe98c4279abe8956b4811b3079ba84680b2ba31e19b0fd92a691"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "2ab0e97f093d4e65d4bae58f2c118ec960d3dd54c5c12fb9aa8e0717107709c1",
+        "updated": "2ab0e97f093d4e65d4bae58f2c118ec960d3dd54c5c12fb9aa8e0717107709c1"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "42091bd98c61bfb98e558d6ec18e22dc8bee5f783170d96eeb98b13803b39b6d",
+        "updated": "42091bd98c61bfb98e558d6ec18e22dc8bee5f783170d96eeb98b13803b39b6d"
+      }
+    },
+    {
+      "preset": "tiny",
+      "prompt_bytes": 128,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "a999614289cd16f5cbe7b5b96288f0305b28eaea2d0bdf988b3fddfb5a6c19d7",
+        "updated": "a999614289cd16f5cbe7b5b96288f0305b28eaea2d0bdf988b3fddfb5a6c19d7"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578",
+        "updated": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578",
+        "updated": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578",
+        "updated": "cb3d1386767fc7de24cdc09ba3e29a6a82a6a79286e496241f9f331a73df2578"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "e02823eac580bf9bc404f9cb3fbad0aa5297a417799fdf1acd7f2f453959318f",
+        "updated": "e02823eac580bf9bc404f9cb3fbad0aa5297a417799fdf1acd7f2f453959318f"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "a1dfbf03c965860ceb7077d1d5339edb3430fab0052e839b2ee1ba4b6fb20f16",
+        "updated": "a1dfbf03c965860ceb7077d1d5339edb3430fab0052e839b2ee1ba4b6fb20f16"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "19fcbd6238a4b0fcad872b50a7841e3242538cf8dc355ddd3eee3792d819ea9e",
+        "updated": "19fcbd6238a4b0fcad872b50a7841e3242538cf8dc355ddd3eee3792d819ea9e"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5",
+        "updated": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5",
+        "updated": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5",
+        "updated": "3b746ff9ecdf20b95f789a124fe1272a9aa10edffb8d32599efb4827388e45d5"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "3d9f0e217daf9cf77a184b915c4fb84ef4e660fc3616e995b5c4875f0235ac9c",
+        "updated": "3d9f0e217daf9cf77a184b915c4fb84ef4e660fc3616e995b5c4875f0235ac9c"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "9393a55a086b6831f1a42bfe7cbe1e51c920709b621216023a19351bfec3aab4",
+        "updated": "9393a55a086b6831f1a42bfe7cbe1e51c920709b621216023a19351bfec3aab4"
+      }
+    },
+    {
+      "preset": "small",
+      "prompt_bytes": 256,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "fdec1cbd44359d43618028e56256ac3fc12fad5bb91766039acf5cf8a30d41d0",
+        "updated": "fdec1cbd44359d43618028e56256ac3fc12fad5bb91766039acf5cf8a30d41d0"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24",
+        "updated": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24",
+        "updated": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24",
+        "updated": "0bfa5bc3a7dff53643963a73ee67ca77f4e1306c91ef80eba5de7d65ababad24"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "5ed0fcf800538c9f8bf9641f429582e3c479f482a3fbf5f79655c22f48381061",
+        "updated": "5ed0fcf800538c9f8bf9641f429582e3c479f482a3fbf5f79655c22f48381061"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "9dee69b8f162d307c274a47d871bb8d050b7bc6ec57d78a242bbeb634e777597",
+        "updated": "9dee69b8f162d307c274a47d871bb8d050b7bc6ec57d78a242bbeb634e777597"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 16,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "1a6e6ff4291877aace7f8aa5902cde480e7dcaa613fb8901ecbea77b06878ca7",
+        "updated": "1a6e6ff4291877aace7f8aa5902cde480e7dcaa613fb8901ecbea77b06878ca7"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb",
+        "updated": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb",
+        "updated": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb",
+        "updated": "69c24f00c942f88e37d7787b29eb033b8a2dc0f0c903598461fe863d985296bb"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0.8,
+      "seed": 9,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "e1dac415531628c69f30850adedaada3bd46de035bbeb1cb80fd61a61c4fe150",
+        "updated": "e1dac415531628c69f30850adedaada3bd46de035bbeb1cb80fd61a61c4fe150"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0.8,
+      "seed": 42,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "2c0dbd6f10b07f91c3a5ba6b73349e934e8afa1ad7c3f756f73e4541c1d2fed0",
+        "updated": "2c0dbd6f10b07f91c3a5ba6b73349e934e8afa1ad7c3f756f73e4541c1d2fed0"
+      }
+    },
+    {
+      "preset": "medium",
+      "prompt_bytes": 512,
+      "temperature": 0.8,
+      "seed": 1337,
+      "same_bytes": true,
+      "hashes": {
+        "reference": "34cc633993eddb95fcf25d983c817f46f55044247d93f8a803368722ed201a05",
+        "updated": "34cc633993eddb95fcf25d983c817f46f55044247d93f8a803368722ed201a05"
+      }
+    }
+  ],
+  "runner_source": "import hashlib\nimport json\nimport sys\nfrom pathlib import Path\nfrom unittest.mock import patch\n\nimport mlx.core as mx\n\nfrom nanogpt_macbook import checkpoint, engine\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import ModelConfig\nfrom nanogpt_macbook.data import decode\nfrom nanogpt_macbook.model import GPT\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nfrom compare_sampling import reference_modules\n\nout = Path('/private/tmp/ngpt-window-124b2c0-trained.json')\nassert not out.exists()\nreference, source = reference_modules('7f741e3')\nengine.select_device('gpu', 2)\nreceipt = dict(source=source_info(), reference=source, method=dict(generated_bytes=200, temperatures=[0, 0.8], seeds=[9, 42, 1337], top_k=40), checkpoints=[], results=[])\nfor preset in ['tiny', 'small', 'medium']:\n    run = Path(f'/private/tmp/ngpt-attention-values-1203504-{preset}-seed1337-run')\n    path, state = checkpoint.read(run, 'best')\n    weights = path / 'model.safetensors'\n    config = ModelConfig(**state['model_config'])\n    receipt['checkpoints'].append(dict(preset=preset, model_config=state['model_config'], step=state['step'], weights_sha256=hashlib.sha256(weights.read_bytes()).hexdigest()))\n    models = [('reference', reference['model'].GPT(config), reference['engine']), ('updated', GPT(config), engine)]\n    for _, model, _ in models:\n        model.load_weights(str(weights))\n        mx.eval(model.parameters())\n    for length in [16, config.context]:\n        prompt = ('After the rain, Mira opened the window. ' * 20)[:length]\n        for temperature in [0, 0.8]:\n            for seed in [9, 42, 1337]:\n                outputs = {}\n                for name, model, module in models:\n                    generated = []\n                    def capture(tokens):\n                        generated.extend(tokens)\n                        return decode(tokens)\n                    with patch.object(module, 'decode', capture):\n                        text = module.generate(model, prompt, 200, temperature, 40, seed)\n                    outputs[name] = generated\n                same = outputs['reference'] == outputs['updated']\n                row = dict(preset=preset, prompt_bytes=length, temperature=temperature, seed=seed, same_bytes=same, hashes={p:hashlib.sha256(bytes(v)).hexdigest() for p,v in outputs.items()})\n                if not same:\n                    row['first_difference'] = next(i for i,(a,b) in enumerate(zip(outputs['reference'],outputs['updated'],strict=True)) if a!=b)\n                    row['bytes'] = outputs\n                receipt['results'].append(row)\n                out.write_text(json.dumps(receipt,indent=2))\n        print(preset, length, 'trained comparisons saved', flush=True)\n    del models, model\nprint('Matching trained pairs:', sum(r['same_bytes'] for r in receipt['results']), '/', len(receipt['results']), flush=True)\n"
+}
