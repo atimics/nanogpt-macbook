@@ -151,6 +151,10 @@ and optimizer state use float32. Metal training uses fused kernels for the
 causal softmax and its gradient at context lengths up to 512. MLX handles the
 matrix operations, inference attention, and CPU training. An explicit GELU
 derivative reduces temporary activation storage in compiled Metal training.
+Native MLX addmm combines residual additions with GPU projections that have
+up to 1024 input features during training. Wider training MLPs use separate
+operations. The [residual projection report](benchmarks/README.md#fused-residual-projections)
+records timing and memory costs.
 AdamW, gradient
 clipping, and small defaults make local experiments
 easy to inspect. The source is split into model, data, checkpoint, training, and

@@ -22,7 +22,6 @@ from nanogpt_macbook.benchmark import _batches, _timed_steps, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
 from nanogpt_macbook.engine import make_train_step, run_steps, select_device
-from nanogpt_macbook.model import GPT
 from nanogpt_macbook.normalization import LayerNorm
 
 
@@ -35,6 +34,9 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
     elif component == "attention":
         target, attribute = model_module, "training_attention"
         native, grouped = reference, model_module.training_attention
+    elif component == "model":
+        target, attribute = model_module, "GPT"
+        native, grouped = reference, model_module.GPT
     else:
         target, attribute = LayerNorm, "__call__"
         native, grouped = reference or nn.LayerNorm.__call__, LayerNorm.__call__
@@ -43,7 +45,7 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
         with patch.object(target, attribute, implementation):
             mx.random.seed(training.seed)
             rng = np.random.default_rng(training.seed)
-            model = GPT(config)
+            model = model_module.GPT(config)
             optimizer = optim.AdamW(
                 learning_rate=training.learning_rate,
                 weight_decay=training.weight_decay,
@@ -109,15 +111,18 @@ def main(component="normalization"):
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--baseline-ref", help=f"Use {component} from this trusted local Git ref")
     parser.add_argument("--queued", action="store_true", help="Use the two-step GPU queue")
+    parser.add_argument(
+        "--memory-gb", type=float, default=4, help="MLX memory/cache budget for both live models"
+    )
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
     if args.out.exists():
         parser.error("Choose a new output path")
     if args.baseline_ref and component == "clipping":
-        parser.error("A baseline ref applies to normalization or attention")
-    if component == "attention" and not args.baseline_ref:
-        parser.error("Choose a baseline ref for the attention comparison")
+        parser.error("A baseline ref applies to normalization, attention, or model")
+    if component in {"attention", "model"} and not args.baseline_ref:
+        parser.error(f"Choose a baseline ref for the {component} comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     reference = None
     reference_info = None
@@ -131,10 +136,14 @@ def main(component="normalization"):
         path = f"src/nanogpt_macbook/{component}.py"
         source = subprocess.check_output(["git", "show", f"{commit}:{path}"], cwd=root)
         module = ModuleType(f"reference_{component}")
+        module.__package__ = "nanogpt_macbook"
         exec(compile(source, f"{commit}:{path}", "exec"), module.__dict__)
-        reference = (
-            module.training_attention if component == "attention" else module.LayerNorm.__call__
-        )
+        if component == "model":
+            reference = module.GPT
+        elif component == "attention":
+            reference = module.training_attention
+        else:
+            reference = module.LayerNorm.__call__
         reference_info = {
             "commit": commit,
             "path": path,
@@ -142,7 +151,7 @@ def main(component="normalization"):
             "scope": f"Current training code with {component} from this commit",
         }
     # Both compiled models stay alive during each comparison.
-    select_device("gpu", 4)
+    select_device("gpu", args.memory_gb)
     operation = "layernorm" if component == "normalization" else component
     receipt = {
         "format": 1,
@@ -156,8 +165,8 @@ def main(component="normalization"):
             "steps_per_path_per_pair": args.steps,
             "warmup_steps_per_path": args.warmup,
             "order": "native then grouped on odd pairs; grouped then native on even pairs",
-            "memory_limit_gib": 4,
-            "cache_limit_gib": 4,
+            "memory_limit_gib": args.memory_gb,
+            "cache_limit_gib": args.memory_gb,
             "timed_work": "host batch creation, forward, loss, backward, clipping, AdamW, sync",
             "summary": "median of grouped/native throughput ratios across adjacent pairs",
         },

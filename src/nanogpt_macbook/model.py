@@ -12,6 +12,18 @@ from .config import ModelConfig
 from .normalization import LayerNorm
 
 
+def _residual_projection(residual, hidden, projection):
+    """Combine a bias-free projection and residual addition on Metal."""
+    if (
+        mx.default_device() == mx.gpu
+        and residual.dtype == hidden.dtype == projection.weight.dtype == mx.float32
+        # Wider training MLPs measured faster with separate operations.
+        and (hidden.shape[-1] <= 1024 or not projection.training)
+    ):
+        return mx.addmm(residual, hidden, projection.weight.T)
+    return residual + projection(hidden)
+
+
 class Attention(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
@@ -19,7 +31,7 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(config.width, config.width * 3, bias=False)
         self.proj = nn.Linear(config.width, config.width, bias=False)
 
-    def __call__(self, x):
+    def __call__(self, x, residual=None):
         batch, length, width = x.shape
         q, k, v = mx.split(self.qkv(x), 3, axis=-1)
         q, k, v = [
@@ -32,7 +44,10 @@ class Attention(nn.Module):
             attended = mx.fast.scaled_dot_product_attention(
                 q, k, v, scale=(width // self.heads) ** -0.5, mask="causal"
             )
-        return self.proj(attended.transpose(0, 2, 1, 3).reshape(batch, length, width))
+        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, length, width)
+        if residual is None:
+            return self.proj(hidden)
+        return _residual_projection(residual, hidden, self.proj)
 
 
 class Block(nn.Module):
@@ -45,8 +60,9 @@ class Block(nn.Module):
         self.down = nn.Linear(4 * config.width, config.width, bias=False)
 
     def __call__(self, x):
-        x = x + self.attention(self.attention_norm(x))
-        return x + self.down(gelu_approx(self.up(self.mlp_norm(x))))
+        x = self.attention(self.attention_norm(x), x)
+        hidden = gelu_approx(self.up(self.mlp_norm(x)))
+        return _residual_projection(x, hidden, self.down)
 
 
 class GPT(nn.Module):

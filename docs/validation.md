@@ -426,3 +426,27 @@ badges, both metrics, device filters and expanded results. Seven Node
 regressions and nine Python site tests pass. The font regression checks that
 label elements are registered with the observer. Firefox is absent from the
 installed test browsers.
+
+## Fused residual projections, 30 September 2026
+
+Source `12beb3c` uses native MLX addmm for float32 GPU residual projections.
+Training fuses projections with up to 1024 input features; medium's wider MLP
+uses separate operations. GPU evaluation fuses both projections. CPU training
+uses separate operations.
+
+All 241 tests pass on Apple Silicon, with Ruff and formatting checks. New cases
+compare model outputs, loss, parameter gradients, and queued optimizer state
+against separate additions on CPU and GPU. They include partial and strided
+inputs, all preset widths, evaluation, accumulation, and changing learning rates.
+
+The [benchmark report](../benchmarks/README.md#fused-residual-projections) records
+fresh three-trial measurements and 100 paired ten-step blocks at both 2 GiB and
+4 GiB. At 2 GiB, median paired gains are 5.6% for tiny, 2.4% for small, and 1.1%
+for medium. Standard trial ranges overlap, and small's separate-run median is
+lower. Peak memory rises by 11.5, 64.1, and 9.0 MiB respectively.
+
+Five matched 300-step learning comparisons cover tiny, three small seeds, and
+medium. Medium uses a 20% validation split to fit its 512-byte context; tiny
+and small use 10%. Both paths choose the same best checkpoint steps. The largest
+absolute final-loss difference is 0.0422 nats, and the largest best-loss difference
+is 0.00585 nats. The report links every raw timing and learning receipt.
