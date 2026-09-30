@@ -5,6 +5,7 @@ import gc
 import hashlib
 import statistics
 import subprocess
+import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,7 +22,7 @@ from nanogpt_macbook import model as model_module
 from nanogpt_macbook.benchmark import _batches, _timed_steps, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
-from nanogpt_macbook.engine import make_train_step, run_steps, select_device
+from nanogpt_macbook.engine import run_steps, select_device
 from nanogpt_macbook.normalization import LayerNorm
 
 
@@ -37,7 +38,10 @@ def compare(
 ):
     config, training = PRESETS[preset]
     records = []
-    if component == "clipping":
+    if component == "engine":
+        target, attribute = engine, "make_train_step"
+        native, grouped = reference, engine.make_train_step
+    elif component == "clipping":
         target, attribute = engine, "clip_grad_norm"
         native, grouped = optim.clip_grad_norm, engine.clip_grad_norm
     elif component == "attention":
@@ -64,7 +68,7 @@ def compare(
             )
             optimizer.init(model.trainable_parameters())
             mx.eval(model.parameters(), optimizer.state)
-            train_step = make_train_step(
+            train_step = engine.make_train_step(
                 model, optimizer, training.accumulation, training.grad_clip
             )
             # Compile each path while its implementation is selected.
@@ -149,7 +153,7 @@ def main(component="normalization"):
         parser.error("Choose a new output path")
     if args.baseline_ref and component == "clipping":
         parser.error("A baseline ref applies to normalization, attention, or model")
-    if component in {"attention", "model"} and not args.baseline_ref:
+    if component in {"attention", "model", "engine"} and not args.baseline_ref:
         parser.error(f"Choose a baseline ref for the {component} comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     reference = None
@@ -165,8 +169,11 @@ def main(component="normalization"):
         source = subprocess.check_output(["git", "show", f"{commit}:{path}"], cwd=root)
         module = ModuleType(f"reference_{component}")
         module.__package__ = "nanogpt_macbook"
+        sys.modules[module.__name__] = module
         exec(compile(source, f"{commit}:{path}", "exec"), module.__dict__)
-        if component == "model":
+        if component == "engine":
+            reference = module.make_train_step
+        elif component == "model":
             reference = module.GPT
         elif component == "attention":
             reference = module.training_attention
