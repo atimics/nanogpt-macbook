@@ -7,8 +7,11 @@ the chip, and the Python, MLX, and NumPy versions.
 
 The workflow offers two hosts:
 
-- `macos-26`: the standard Mac runner, free for this public repository. The
-  probe establishes whether that image offers usable Metal access.
+- `macos-26`: the standard Mac runner, free for this public repository. Our
+  [September 30 probe](https://github.com/cenetex/nanogpt-macbook/actions/runs/36748164503)
+  passed real Metal execution on an Apple Paravirtual device with 7 GiB memory.
+  [Host receipt](ci/36748164503/host.json). Use this host first. Each new runner
+  image still gets a fresh GPU probe and same-commit noise check.
 - `macos-26-xlarge`: GitHub's M2 runner with GPU acceleration. It requires
   GitHub Team or Enterprise Cloud, paid runner access, and a spending budget.
   The published rate on September 30, 2026 is $0.102 per minute. The 30-minute
