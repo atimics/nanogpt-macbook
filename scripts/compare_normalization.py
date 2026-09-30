@@ -22,7 +22,6 @@ from nanogpt_macbook.benchmark import _batches, _timed_steps, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
 from nanogpt_macbook.engine import make_train_step, run_steps, select_device
-from nanogpt_macbook.model import GPT
 from nanogpt_macbook.normalization import LayerNorm
 
 
@@ -35,6 +34,9 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
     elif component == "attention":
         target, attribute = model_module, "training_attention"
         native, grouped = reference, model_module.training_attention
+    elif component == "model":
+        target, attribute = model_module, "GPT"
+        native, grouped = reference, model_module.GPT
     else:
         target, attribute = LayerNorm, "__call__"
         native, grouped = reference or nn.LayerNorm.__call__, LayerNorm.__call__
@@ -43,7 +45,7 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
         with patch.object(target, attribute, implementation):
             mx.random.seed(training.seed)
             rng = np.random.default_rng(training.seed)
-            model = GPT(config)
+            model = model_module.GPT(config)
             optimizer = optim.AdamW(
                 learning_rate=training.learning_rate,
                 weight_decay=training.weight_decay,
@@ -115,9 +117,9 @@ def main(component="normalization"):
     if args.out.exists():
         parser.error("Choose a new output path")
     if args.baseline_ref and component == "clipping":
-        parser.error("A baseline ref applies to normalization or attention")
-    if component == "attention" and not args.baseline_ref:
-        parser.error("Choose a baseline ref for the attention comparison")
+        parser.error("A baseline ref applies to normalization, attention, or model")
+    if component in {"attention", "model"} and not args.baseline_ref:
+        parser.error(f"Choose a baseline ref for the {component} comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     reference = None
     reference_info = None
@@ -131,10 +133,14 @@ def main(component="normalization"):
         path = f"src/nanogpt_macbook/{component}.py"
         source = subprocess.check_output(["git", "show", f"{commit}:{path}"], cwd=root)
         module = ModuleType(f"reference_{component}")
+        module.__package__ = "nanogpt_macbook"
         exec(compile(source, f"{commit}:{path}", "exec"), module.__dict__)
-        reference = (
-            module.training_attention if component == "attention" else module.LayerNorm.__call__
-        )
+        if component == "model":
+            reference = module.GPT
+        elif component == "attention":
+            reference = module.training_attention
+        else:
+            reference = module.LayerNorm.__call__
         reference_info = {
             "commit": commit,
             "path": path,
