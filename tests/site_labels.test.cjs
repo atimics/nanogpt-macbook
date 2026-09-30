@@ -20,6 +20,7 @@ function render(positions, width, textWidths = [32, 43]) {
       setAttribute(name, value) { this.attrs[name] = value; },
     })),
     querySelectorAll() { return this.texts; },
+    querySelector() { return this.circle; },
   }));
   const plot = {
     clientWidth: width,
@@ -29,6 +30,10 @@ function render(positions, width, textWidths = [32, 43]) {
   points.flatMap(point => point.texts).forEach(text => {
     text.style = {setProperty(name, value) { text.vars[name] = value; }};
     text.closest = () => plot;
+  });
+  points.forEach(point => {
+    point.circle = {vars: {}};
+    point.circle.style = {setProperty(name, value) { point.circle.vars[name] = value; }};
   });
   let resize;
   const observed = new Set();
@@ -110,6 +115,54 @@ test('font changes refit labels while the plot width stays the same', () => {
   checkBounds(chart.points, 244);
   assert.ok(chart.points.filter(point => point.dataset.label === 'true').length < originalVisible);
   assert.equal(chart.points.length, 6);
+});
+
+test('dense markers keep space between neighboring commits through resize', () => {
+  const positions = Array.from({length: 82}, (_, i) => 9 + i * 82 / 81);
+  const chart = render(positions, 260);
+  for (const width of [502, 260, 186, 502]) {
+    chart.resize(width);
+    const radii = chart.points.map(point => Math.min(5, parseFloat(point.circle.vars['--point-radius']) * width / 100));
+    for (let i = 1; i < positions.length; i++) {
+      assert.ok(radii[i - 1] + radii[i] < (positions[i] - positions[i - 1]) * width / 100);
+    }
+    assert.deepEqual(chart.points.map(point => Number(point.dataset.position)), positions);
+  }
+});
+
+test('point reading follows pointer and focus, then returns to latest', () => {
+  const document = {querySelectorAll: () => [], getElementById: () => ({addEventListener() {}})};
+  const context = {document, ResizeObserver: class {}};
+  vm.runInNewContext(script, context);
+  const points = [9, 50, 91].map((position, index) => ({
+    dataset: {position: String(position), value: String((index + 1) * 100), commit: `commit${index}`},
+  }));
+  const events = {};
+  const plot = {
+    querySelectorAll: () => points,
+    getBoundingClientRect: () => ({left: 10, width: 200}),
+    addEventListener(name, handler) { events[name] = handler; },
+  };
+  const value = {}, commit = {};
+  context.setupTimelineReading({querySelector: selector => selector === '.timeline-plot' ? plot : selector === '[data-point-value]' ? value : commit});
+  assert.equal(value.textContent, '300 bytes/s');
+  assert.equal(commit.textContent, 'Latest · commit2');
+  events.pointermove({clientX: 110, target: {closest: () => null}});
+  assert.equal(value.textContent, '200 bytes/s');
+  assert.equal(commit.textContent, 'Commit · commit1');
+  assert.equal(points.filter(point => point.dataset.active === 'true').length, 1);
+  events.pointermove({clientX: 110, target: {closest: () => points[0]}});
+  assert.equal(value.textContent, '100 bytes/s', 'A hovered hash belongs to its linked point');
+  document.activeElement = points[0];
+  events.focusin({target: points[0]});
+  events.pointerleave();
+  assert.equal(value.textContent, '100 bytes/s');
+  document.activeElement = null;
+  events.focusout({relatedTarget: null});
+  assert.equal(value.textContent, '300 bytes/s');
+  events.pointermove({clientX: 110, target: {closest: () => null}});
+  events.pointerleave();
+  assert.equal(commit.textContent, 'Latest · commit2');
 });
 
 test('result layout measures the table after resize, reopen, and filtering', () => {

@@ -44,8 +44,8 @@ def test_built_site_has_real_figures_and_resolving_local_links(tmp_path):
     BUILDER["build"](output)
     page = (output / "index.html").read_text()
     assert "{{" not in page
-    assert "128.9k" in page
-    assert "165.8k" in page
+    for row in receipt()["results"]:
+        assert f'data-value="{row["summary"]["median_bytes_per_second"]:,.0f}"' in page
     assert "be1802a" in page and "d1877d0" in page
     assert "Training speed by commit" in page
     assert "5.52" in page and "2.17" in page

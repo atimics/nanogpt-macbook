@@ -7,6 +7,9 @@ function fitTimelineLabels(plot) {
   const last = points[points.length - 1];
   // Keep the shared commit positions. Labels can move a few pixels at an edge.
   const bounds = points.map((point, index) => {
+    const previousGap = index ? Number(point.dataset.position) - Number(points[index - 1].dataset.position) : 100;
+    const nextGap = index < points.length - 1 ? Number(points[index + 1].dataset.position) - Number(point.dataset.position) : 100;
+    point.querySelector('circle').style.setProperty('--point-radius', `${Math.min(previousGap, nextGap) * 0.35}cqi`);
     const position = Number(point.dataset.position) * width / 100;
     const texts = [...point.querySelectorAll('text')];
     const labelWidth = Math.max(...texts.map(text => text.getBBox().width));
@@ -44,6 +47,36 @@ document.querySelectorAll('.timeline-plot').forEach(plot => {
   timelineObserver.observe(plot);
   plot.querySelectorAll('svg text.timeline-label').forEach(text => timelineObserver.observe(text));
 });
+function setupTimelineReading(card) {
+  const plot = card.querySelector('.timeline-plot');
+  const points = [...plot.querySelectorAll('svg a')];
+  if (!points.length) return;
+  const latest = points[points.length - 1];
+  const value = card.querySelector('[data-point-value]');
+  const commit = card.querySelector('[data-point-commit]');
+  const show = point => {
+    points.forEach(item => { item.dataset.active = String(item === point); });
+    value.textContent = `${point.dataset.value} bytes/s`;
+    commit.textContent = `${point === latest ? 'Latest' : 'Commit'} · ${point.dataset.commit}`;
+  };
+  plot.addEventListener('pointermove', event => {
+    const linkedPoint = event.target.closest('svg a');
+    if (points.includes(linkedPoint)) {
+      show(linkedPoint);
+      return;
+    }
+    const bounds = plot.getBoundingClientRect();
+    const position = (event.clientX - bounds.left) * 100 / bounds.width;
+    const nearest = points.reduce((best, point) =>
+      Math.abs(Number(point.dataset.position) - position) < Math.abs(Number(best.dataset.position) - position) ? point : best);
+    show(nearest);
+  });
+  plot.addEventListener('pointerleave', () => show(points.find(point => point === document.activeElement) || latest));
+  plot.addEventListener('focusin', event => { if (points.includes(event.target)) show(event.target); });
+  plot.addEventListener('focusout', event => { if (!points.includes(event.relatedTarget)) show(latest); });
+  show(latest);
+}
+document.querySelectorAll('.timeline-card').forEach(setupTimelineReading);
 function fitResultTable(region) {
   if (!region.clientWidth) return;
   region.dataset.layout = 'table';

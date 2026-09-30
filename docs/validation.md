@@ -450,3 +450,32 @@ medium. Medium uses a 20% validation split to fit its 512-byte context; tiny
 and small use 10%. Both paths choose the same best checkpoint steps. The largest
 absolute final-loss difference is 0.0422 nats, and the largest best-loss difference
 is 0.00585 nats. The report links every raw timing and learning receipt.
+
+## Dense chart markers and value reading, 30 September 2026
+
+The 75-point page fits ordinary browser widths. At 320 px, fixed 10 px markers
+crowd the 260 px plots: adjacent marker pairs overlap 11 times for tiny GPU,
+seven for small GPU, six for medium GPU, and four for CPU. The latest numeric
+labels also cross nearby peak markers and lines.
+
+Markers now take their size from the nearest commit gap. Every point keeps
+its position, commit link, and native title. A text row above each plot shows
+the selected value and commit. Pointer movement and keyboard focus highlight
+the selected point; leaving restores the latest reading. A hovered commit
+label selects its own linked point. The baseline badge starts with “Latest”
+to explain which result both percentage comparisons describe.
+
+Chromium and WebKit checks find zero overlapping marker pairs at 240, 320,
+and 1280 px. A 32-state density and text audit covers repeated resizing,
+24 px chart text, the 75 measured points, and a synthetic 255-point fixture
+with 60 extra GPU-only commits. Visible glyphs fit on both axes. Direct links,
+native titles, eight percentage badges, pointer selection, keyboard focus,
+and return-to-latest behavior pass. The WebKit pointer check uses measured
+glyph bounds because its locator hover action misses translated SVG text;
+rendered hit tests select the correct link.
+
+The controls audit passes 120 states in Chromium, Chromium with 24 px minimum
+text, and WebKit. It covers widths 320–1440 px, a 240 px results container,
+Speed/Memory, CPU/All, and expanded history. Page, plot, readout, and table
+bounds fit, and horizontal scroll remains zero. Browser error logs are clear.
+Nine Node regressions, nine Python site tests, Ruff, and format checks pass.
