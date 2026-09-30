@@ -87,7 +87,7 @@ def test_sampling_bytes_match_full_output_across_growing_and_sliding_windows(
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
-def test_sampling_compiles_a_full_window_and_keeps_short_tails_eager(device, monkeypatch):
+def test_sampling_compiles_full_gpu_windows_and_keeps_short_tails_eager(device, monkeypatch):
     select(device)
     model = GPT(ModelConfig(context=16, layers=1, heads=2, width=16))
     original = mx.compile
@@ -106,7 +106,10 @@ def test_sampling_compiles_a_full_window_and_keeps_short_tails_eager(device, mon
     engine.generate(model, "Mira ", 20, temperature=0)
     assert compiled_shapes == []
     engine.generate(model, "Mira ", 40, temperature=0)
-    assert compiled_shapes and set(compiled_shapes) == {(1, 16)}
+    if device == "gpu":
+        assert compiled_shapes and set(compiled_shapes) == {(1, 16)}
+    else:
+        assert compiled_shapes == []
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
