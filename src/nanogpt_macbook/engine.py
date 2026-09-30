@@ -5,6 +5,7 @@ import math
 import signal
 import threading
 import time
+from collections import deque
 from dataclasses import asdict
 from functools import partial
 from pathlib import Path
@@ -53,6 +54,63 @@ def evaluate(model: GPT, dataset: Dataset, batch_size: int, batches: int = 10) -
     return {"val_loss": loss, "bits_per_byte": loss / math.log(2)}
 
 
+def _checked_loss(loss, norm):
+    loss_value, norm_value = loss.item(), norm.item()
+    if not math.isfinite(loss_value) or not math.isfinite(norm_value):
+        raise ValueError("Training became non-finite; resume with the last checkpoint")
+    return loss_value
+
+
+class TrainStep:
+    """One compiled update with synchronous and queued execution."""
+
+    def __init__(self, compiled, state):
+        self.compiled = compiled
+        self.state = state
+
+    def __call__(self, inputs, targets, rate):
+        loss, norm = self.compiled(inputs, targets, mx.array(rate))
+        mx.eval(loss, norm, self.state)
+        return _checked_loss(loss, norm)
+
+    def enqueue(self, inputs, targets, rate):
+        loss, norm = self.compiled(inputs, targets, mx.array(rate))
+        mx.async_eval(loss, norm, self.state)
+        return loss, norm
+
+
+def run_steps(step, batches, *, pipeline=False):
+    """Yield checked losses in order and finish every update before returning.
+
+    Each batch contains inputs, targets, and its learning rate. Queued execution
+    overlaps host work with GPU work and keeps at most two updates in flight.
+    The batch iterator controls stop and checkpoint boundaries.
+    """
+    if not pipeline:
+        for inputs, targets, rate in batches:
+            yield step(inputs, targets, rate), rate
+        return
+    pending = deque()
+    drained = False
+    try:
+        for inputs, targets, rate in batches:
+            pending.append((step.enqueue(inputs, targets, rate), rate))
+            if len(pending) == 2:
+                (loss, norm), rate = pending.popleft()
+                yield _checked_loss(loss, norm), rate
+        # The last yielded result is also a boundary for evaluation, reporting,
+        # and saving. All parameter and optimizer updates finish here.
+        mx.eval(step.state)
+        drained = True
+        while pending:
+            (loss, norm), rate = pending.popleft()
+            yield _checked_loss(loss, norm), rate
+    finally:
+        # Complete submitted work when an input error or early close ends a run.
+        if not drained:
+            mx.eval(step.state)
+
+
 def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
     """Compile the full gradient and optimizer update for a fixed batch shape."""
     state = [model.state, optimizer.state]
@@ -78,15 +136,7 @@ def make_train_step(model: GPT, optimizer, accumulation: int, grad_clip: float):
         optimizer.update(model, grads)
         return total_loss / accumulation, norm
 
-    def step(inputs, targets, rate):
-        loss, norm = compiled_step(inputs, targets, mx.array(rate))
-        mx.eval(loss, norm, state)
-        loss_value, norm_value = loss.item(), norm.item()
-        if not math.isfinite(loss_value) or not math.isfinite(norm_value):
-            raise ValueError("Training became non-finite; resume with the last checkpoint")
-        return loss_value
-
-    return step
+    return TrainStep(compiled_step, state)
 
 
 def train(
@@ -101,12 +151,15 @@ def train(
     eval_batches: int = 10,
     log_every: int = 10,
     time_limit: float | None = None,
+    pipeline: bool | None = None,
     report=print,
 ) -> dict:
     if min(steps, eval_every, eval_batches, log_every) < 1:
         raise ValueError("Steps and report intervals must be positive")
     if time_limit is not None and (not math.isfinite(time_limit) or time_limit <= 0):
         raise ValueError("time-limit must be finite and positive")
+    if pipeline is None:
+        pipeline = mx.default_device() == mx.gpu
     with checkpoint.run_lock(run):
         if resume:
             path, state = checkpoint.read(run)
@@ -143,6 +196,7 @@ def train(
                 "best_val_loss": None,
             }
         state["data_path"] = str(dataset.path)
+        state["execution"] = "pipelined" if pipeline else "compiled"
         checkpoint.write_json(run / "run.json", {**state, "target_steps": steps})
         train_step = make_train_step(
             model, optimizer, train_config.accumulation, train_config.grad_clip
@@ -200,22 +254,41 @@ def train(
         try:
             if not resume:
                 validate_and_save()
-            while state["step"] < steps and not stop:
-                if time_limit is not None and time.monotonic() - started >= time_limit:
+
+            def should_stop():
+                return stop or (time_limit is not None and time.monotonic() - started >= time_limit)
+
+            while state["step"] < steps and not should_stop():
+                first = state["step"]
+                boundary = min(
+                    steps,
+                    (first // log_every + 1) * log_every,
+                    (first // eval_every + 1) * eval_every,
+                )
+
+                def batches(first=first, boundary=boundary):
+                    for index in range(first, boundary):
+                        if should_stop():
+                            return
+                        inputs, targets = [], []
+                        for _ in range(train_config.accumulation):
+                            x, y = dataset.batch("train", train_config.batch_size, rng)
+                            inputs.append(x)
+                            targets.append(y)
+                        yield (
+                            mx.array(np.stack(inputs)),
+                            mx.array(np.stack(targets)),
+                            train_config.rate(index),
+                        )
+
+                for result in run_steps(train_step, batches(), pipeline=pipeline):
+                    last_loss, rate = result
+                    state["step"] += 1
+                    interval_tokens += (
+                        train_config.batch_size * train_config.accumulation * model_config.context
+                    )
+                if state["step"] == first:
                     break
-                inputs, targets = [], []
-                for _ in range(train_config.accumulation):
-                    x, y = dataset.batch("train", train_config.batch_size, rng)
-                    inputs.append(x)
-                    targets.append(y)
-                rate = train_config.rate(state["step"])
-                last_loss = train_step(
-                    mx.array(np.stack(inputs)), mx.array(np.stack(targets)), rate
-                )
-                state["step"] += 1
-                interval_tokens += (
-                    train_config.batch_size * train_config.accumulation * model_config.context
-                )
                 if state["step"] % log_every == 0 or state["step"] == steps:
                     now = time.monotonic()
                     tokens_per_second = interval_tokens / max(now - last_log, 1e-6)

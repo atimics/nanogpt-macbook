@@ -28,6 +28,7 @@ def parser() -> argparse.ArgumentParser:
     measuring.add_argument("--seed", type=int, default=1337)
     measuring.add_argument("--device", choices=("gpu", "cpu"), default="gpu")
     measuring.add_argument("--memory-gb", type=float, default=2)
+    measuring.add_argument("--sync", action="store_true", help="Wait after each training step")
     data = commands.add_parser("prepare", help="Turn UTF-8 text into training and validation data")
     source = data.add_mutually_exclusive_group(required=True)
     source.add_argument("--input", type=Path, help="A UTF-8 text file")
@@ -46,6 +47,7 @@ def parser() -> argparse.ArgumentParser:
     continuing = commands.add_parser("resume", help="Continue from the latest complete checkpoint")
     continuing.add_argument("--data", type=Path, help="Prepared data path if the data moved")
     for command in (training, continuing):
+        command.add_argument("--sync", action="store_true", help="Wait after each training step")
         command.add_argument("--run", type=Path, required=True)
         command.add_argument(
             "--steps", type=int, required=True, help="Total target optimizer steps"
@@ -121,6 +123,7 @@ def dispatch(args):
             warmup=args.warmup,
             repeats=args.repeats,
             seed=args.seed,
+            pipeline=False if args.sync else None,
         )
         return 0
     if args.command == "doctor":
@@ -178,6 +181,7 @@ def dispatch(args):
             eval_batches=args.eval_batches,
             log_every=args.log_every,
             time_limit=args.time_limit,
+            pipeline=False if args.sync else None,
         )
     elif args.command == "sample":
         model, _ = load_model(args.run, args.checkpoint)

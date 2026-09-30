@@ -17,7 +17,7 @@ import numpy as np
 from . import __version__
 from .checkpoint import write_json
 from .config import PRESETS
-from .engine import make_train_step, select_device
+from .engine import make_train_step, run_steps, select_device
 from .model import GPT
 
 
@@ -63,6 +63,34 @@ def _step(train_step, rng, config, training):
     train_step(mx.array(block[None, :, :-1]), mx.array(block[None, :, 1:]), training.learning_rate)
 
 
+def _batches(rng, config, training, steps):
+    for _ in range(steps):
+        block = rng.integers(0, 256, (training.batch_size, config.context + 1), dtype=np.int32)
+        yield mx.array(block[None, :, :-1]), mx.array(block[None, :, 1:]), training.learning_rate
+
+
+def _timed_steps(train_step, rng, config, training, steps, pipeline):
+    if not pipeline:
+        durations = []
+        for _ in range(steps):
+            start = time.perf_counter()
+            _step(train_step, rng, config, training)
+            mx.synchronize()
+            durations.append(time.perf_counter() - start)
+        return durations
+    durations = []
+    start = time.perf_counter()
+    for _loss, _rate in run_steps(
+        train_step, _batches(rng, config, training, steps), pipeline=True
+    ):
+        now = time.perf_counter()
+        durations.append(now - start)
+        start = now
+    mx.synchronize()
+    durations[-1] += time.perf_counter() - start
+    return durations
+
+
 def benchmark(
     output: Path,
     presets: list[str],
@@ -73,6 +101,7 @@ def benchmark(
     warmup: int = 20,
     repeats: int = 3,
     seed: int = 1337,
+    pipeline: bool | None = None,
     report=print,
 ) -> dict:
     if output.exists():
@@ -82,6 +111,8 @@ def benchmark(
     if not presets or len(set(presets)) != len(presets) or any(p not in PRESETS for p in presets):
         raise ValueError("Choose distinct presets from tiny, small, and medium")
     selected = select_device(device, memory_gb)
+    if pipeline is None:
+        pipeline = selected == "gpu"
     info = mx.device_info(mx.gpu) if mx.metal.is_available() else {}
     receipt = {
         "format": 1,
@@ -99,10 +130,16 @@ def benchmark(
             "device": selected,
         },
         "method": {
-            "name": "training-step-v1",
+            "name": "training-loop-v2" if pipeline else "training-step-v1",
             "data": "seeded uniform random UTF-8 byte token IDs (0 to 255)",
             "dtype": "float32",
-            "execution": "compiled",
+            "execution": "pipelined" if pipeline else "compiled",
+            "queue_depth": 2 if pipeline else 1,
+            "timing_semantics": (
+                "checked step completion intervals; final interval drains all GPU work"
+                if pipeline
+                else "complete steps with a device wait after each step"
+            ),
             "timed_work": "host batch creation, forward, loss, backward, clipping, AdamW, sync",
             "steps": steps,
             "warmup_steps": warmup,
@@ -145,16 +182,13 @@ def benchmark(
                 model, optimizer, training.accumulation, training.grad_clip
             )
 
-            for _ in range(warmup):
-                _step(train_step, rng, config, training)
+            for _ in run_steps(
+                train_step, _batches(rng, config, training, warmup), pipeline=pipeline
+            ):
+                pass
             mx.synchronize()
             mx.reset_peak_memory()
-            durations = []
-            for _ in range(steps):
-                start = time.perf_counter()
-                _step(train_step, rng, config, training)
-                mx.synchronize()
-                durations.append(time.perf_counter() - start)
+            durations = _timed_steps(train_step, rng, config, training, steps, pipeline)
             elapsed = sum(durations)
             rate = training.batch_size * config.context * steps / elapsed
             trials.append(

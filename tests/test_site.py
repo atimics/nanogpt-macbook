@@ -120,3 +120,19 @@ def test_asset_urls_change_with_content_for_returning_visitors(tmp_path):
     for name in second:
         original = name.split(".")[0] + "." + name.split(".")[-1]
         assert (tmp_path / "second" / name).read_bytes() == (root / "site" / original).read_bytes()
+
+
+def test_site_checks_the_queued_timing_protocol():
+    updated = receipt()
+    updated["method"].update(name="training-loop-v2", execution="pipelined", queue_depth=2)
+    BUILDER["validate"](updated)
+    for changes in (
+        {"queue_depth": 3},
+        {"name": "training-step-v1"},
+        {"execution": "compiled"},
+        {"dtype": "bfloat16"},
+    ):
+        altered = copy.deepcopy(updated)
+        altered["method"].update(changes)
+        with pytest.raises(ValueError):
+            BUILDER["validate"](altered)
