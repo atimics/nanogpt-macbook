@@ -672,3 +672,94 @@ The largest absolute final-loss difference is 0.0268 nats; the
 largest best-checkpoint difference is 0.0002 nats. Each pair selects
 the same best checkpoint step. Initial-version learning receipts are also
 preserved: [tiny 1337](learning/attention-values-1d71ed2-tiny-seed1337.json), [small 1337](learning/attention-values-1d71ed2-small-seed1337.json), [small 17](learning/attention-values-1d71ed2-small-seed17.json), [small 42](learning/attention-values-1d71ed2-small-seed42.json), [medium 1337](learning/attention-values-1d71ed2-medium-seed1337.json).
+
+## Attention backward experiments
+
+These experiments compare six attention variants with source `6d50623`,
+which uses the attention implementation measured at `1203504`. Each variant
+runs ten alternating pairs of fresh models per preset. Each model gets
+20 warmup steps and 100 timed steps at the default 2 GiB memory and cache
+setting. One model stays alive at a time. Timing covers complete queued
+training steps and the final GPU wait.
+
+The table gives median throughput change, followed by faster trials out of
+ten. All variants match the current outputs and all three gradients exactly
+in twenty shape-and-scale checks. Those checks cover contexts 128, 256, 288,
+480, and 512; head widths 32, 40, 48, and 64; and input scales 0, 1, 5, and 100.
+
+| Variant and raw receipt | Tiny | Small | Medium |
+| --- | ---: | ---: | ---: |
+| [Recompute probabilities](diagnostics/attention-recompute-rounded-6d50623-fresh.json) | +0.20% (7/10) | -1.35% (2/10) | -2.54% (0/10) |
+| [Store the causal half](diagnostics/attention-packed-6d50623-fresh.json) | +0.06% (5/10) | -2.01% (3/10) | -6.61% (0/10) |
+| [Fuse the query gradient in registers](diagnostics/attention-query-gradient-direct-6d50623-fresh.json) | -0.94% (2/10) | +1.86% (7/10) | +0.48% (7/10) |
+| [Keep the score derivative in registers](diagnostics/attention-score-gradient-direct-6d50623-fresh.json) | -0.49% (1/10) | -0.42% (4/10) | +0.73% (7/10) |
+| [Fuse the query gradient in shared memory](diagnostics/attention-query-gradient-6d50623-fresh.json) | +0.04% (5/10) | -0.54% (4/10) | -0.18% (5/10) |
+| [Combine all three gradients](diagnostics/attention-all-gradients-6d50623-fresh.json) | -0.59% (3/10) | -1.49% (3/10) | -1.31% (2/10) |
+
+Recomputing probabilities stores the row maximum and exponential sum from
+the forward pass, then rebuilds probabilities during backward work. A
+separate float32 rounding step keeps the reconstructed probabilities equal
+to the forward values. The packed variant stores each row through its
+causal boundary and expands it during backward work.
+
+The query-gradient variants combine the score derivative and query product
+in one kernel. The register version applies the derivative to matrix
+fragments directly; the shared-memory version stages those values in a tile.
+The score-only variant keeps the existing three masked matrix products.
+The final variant combines the key and value products in a second kernel.
+
+Peak active memory includes the full training graph. The table gives the
+change in median per-trial peak allocation, in MiB.
+
+| Variant | Tiny | Small | Medium |
+| --- | ---: | ---: | ---: |
+| Recompute probabilities | -0.9 | +106.5 | +30.6 |
+| Store the causal half | +8.1 | +52.5 | +32.3 |
+| Fuse the query gradient in registers | +0.3 | 0.0 | +3.0 |
+| Keep the score derivative in registers | -0.1 | 0.0 | 0.0 |
+| Fuse the query gradient in shared memory | 0.0 | 0.0 | +3.0 |
+| Combine all three gradients | 0.0 | 0.0 | +3.0 |
+
+The initial register-based query fusion gained 1.86% for small, with seven of
+ten faster trials. A [longer check](diagnostics/attention-query-gradient-direct-6d50623-long-fresh.json)
+uses twenty pairs, 100 warmup steps, and 300 timed steps per fresh model.
+It ends at +0.05% median change, with 11 of twenty faster trials,
+and +0.25% total-time change. That puts the result close to even. The
+current attention path remains the training default.
+
+Each receipt contains its prototype source and SHA-256, the baseline commit
+and package source hash, every timing interval, model settings, peak memory,
+and numerical checks. The summaries were checked independently from those
+intervals before publication.
+
+To replay a receipt, use a checkout at `6d50623` with its recorded MLX version.
+Save this code as a file in that checkout and set `receipt_path` to the raw
+receipt you want to run:
+
+```python
+import json
+import sys
+from pathlib import Path
+from types import ModuleType
+from unittest.mock import patch
+
+from nanogpt_macbook import attention, model
+from nanogpt_macbook.engine import select_device
+
+sys.path.insert(0, "scripts")
+from compare_normalization import compare
+
+receipt_path = Path("attention-query-gradient-direct-6d50623-long-fresh.json")
+receipt = json.loads(receipt_path.read_text())
+candidate = ModuleType("attention_candidate")
+exec(compile(receipt["candidate_source"], "attention_candidate", "exec"), candidate.__dict__)
+method = receipt["method"]
+select_device("gpu", method["memory_gb"])
+with patch.object(model, "training_attention", candidate.training_attention):
+    for result in receipt["results"]:
+        replay = compare(
+            result["preset"], method["pairs"], method["steps"], method["warmup"],
+            "attention", attention.training_attention, queued=True, fresh=True,
+        )
+        print(result["preset"], replay["median_ratio"], replay["faster_pairs"])
+```
