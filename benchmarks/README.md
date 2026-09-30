@@ -758,8 +758,14 @@ select_device("gpu", method["memory_gb"])
 with patch.object(model, "training_attention", candidate.training_attention):
     for result in receipt["results"]:
         replay = compare(
-            result["preset"], method["pairs"], method["steps"], method["warmup"],
-            "attention", attention.training_attention, queued=True, fresh=True,
+            result["preset"],
+            method["pairs"],
+            method["steps"],
+            method["warmup"],
+            "attention",
+            attention.training_attention,
+            queued=True,
+            fresh=True,
         )
         print(result["preset"], replay["median_ratio"], replay["faster_pairs"])
 ```
