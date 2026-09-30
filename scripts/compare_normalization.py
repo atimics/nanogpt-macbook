@@ -152,7 +152,7 @@ def main(component="normalization"):
     if args.out.exists():
         parser.error("Choose a new output path")
     if args.baseline_ref and component == "clipping":
-        parser.error("A baseline ref applies to normalization, attention, or model")
+        parser.error("A baseline ref applies to normalization, attention, model, or engine")
     if component in {"attention", "model", "engine"} and not args.baseline_ref:
         parser.error(f"Choose a baseline ref for the {component} comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
