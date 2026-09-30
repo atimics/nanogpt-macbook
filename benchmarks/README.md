@@ -507,3 +507,86 @@ The complete traces are in the baseline and updated receipts:
 - Seed 1337: [baseline](learning/attention-forward-dccdbce-small-seed1337.json), [updated](learning/attention-forward-ac55ea0-small-seed1337.json).
 - Seed 17: [baseline](learning/attention-forward-dccdbce-small-seed17.json), [updated](learning/attention-forward-ac55ea0-small-seed17.json).
 - Seed 42: [baseline](learning/attention-forward-dccdbce-small-seed42.json), [updated](learning/attention-forward-ac55ea0-small-seed42.json).
+
+## Fused residual projections
+
+Commit `12beb3c` combines a GPU matrix projection with its residual addition
+using native MLX `addmm`. Float32 training uses this operation for projections
+with up to 1024 input features. The medium model uses it for attention and uses
+separate operations for its wider MLP projection. Float32 GPU evaluation uses
+the fused operation for both projections. CPU training uses separate operations.
+The parameter names and checkpoint layout stay compatible.
+
+Measurements use an M4 Max, MLX 0.32.3, float32, and two queued training steps.
+The baseline is `09a5066`. Fresh standard runs use one model, a 2 GiB memory/cache
+budget, 20 warmup steps, and three 100-step trials. Both complete receipts are
+available: [baseline](results/m4-max-09a5066-gpu.json) and
+[updated](results/m4-max-12beb3c-gpu.json).
+
+| Preset | Baseline bytes/s | Updated bytes/s | Change | Peak memory before / after |
+| --- | ---: | ---: | ---: | ---: |
+| tiny / Metal | 483,276 | 490,870 | +1.6% | 268.0 / 279.5 MiB |
+| small / Metal | 147,012 | 144,480 | -1.7% | 1454.8 / 1519.0 MiB |
+| medium / Metal | 52,517 | 52,663 | +0.3% | 1835.8 / 1844.8 MiB |
+
+All three standard trial ranges overlap. Tiny and medium have higher medians;
+small has a lower median in these separate runs. The paired checks below measure
+adjacent blocks to compare both paths under nearby machine conditions. Peak
+active memory rises by 11.5 MiB for tiny, 64.1 MiB for small, and 9.0 MiB for medium.
+
+```bash
+uv run python scripts/compare_model.py --baseline-ref 09a5066 \
+  --queued --pairs 100 --steps 10 --warmup 20 --memory-gb 2 \
+  --out benchmarks/diagnostics/my-residual-2gib.json
+```
+
+Each paired check keeps two complete models alive. Both get 20 warmup steps,
+then 100 pairs of ten-step blocks. Their order alternates each pair. Timings
+include batch creation, forward and backward work, clipping, AdamW, loss/norm
+checks, and the final GPU wait. The same comparison also runs with 4 GiB.
+
+| Preset | Budget | Median gain | Total-time gain | Pairs with a gain |
+| --- | ---: | ---: | ---: | ---: |
+| tiny / Metal | 2 GiB | +5.6% | +5.5% | 100 / 100 |
+| small / Metal | 2 GiB | +2.4% | +2.2% | 89 / 100 |
+| medium / Metal | 2 GiB | +1.1% | +1.2% | 96 / 100 |
+| tiny / Metal | 4 GiB | +5.4% | +5.5% | 100 / 100 |
+| small / Metal | 4 GiB | +1.5% | +1.6% | 78 / 100 |
+| medium / Metal | 4 GiB | +1.0% | +1.3% | 92 / 100 |
+
+The [2 GiB receipt](diagnostics/residual-d67322d-2gib-blocks.json) and
+[4 GiB receipt](diagnostics/residual-12beb3c-blocks.json) include all intervals,
+source commits, and the reference model file hash. The 2 GiB receipt uses
+`d67322d`, which adds the budget option to the comparison script. Both updated
+runs have the same Python package source hash.
+
+All 241 tests pass on Apple Silicon. The 24 new CPU/GPU cases compare logits,
+loss, every parameter gradient, and queued AdamW updates with separate residual
+additions. They cover partial and strided inputs, all preset widths, evaluation,
+accumulation, and changing learning rates. Existing checks cover causal attention,
+training stops, checkpoint loading, and resume.
+
+Five matched learning comparisons run 300 steps on the bundled story. Tiny and
+small use a 10% validation split (455 bytes). Medium uses a fixed 20% split
+(909 bytes), which fits its 512-byte context. Each pair uses matching data, seed,
+schedule, and float32 settings. Loss is held-out cross entropy in nats.
+
+| Preset / seed | Baseline final | Updated final | Final difference | Best-loss difference |
+| --- | ---: | ---: | ---: | ---: |
+| tiny / 1337 | 2.1712088 | 2.1712077 | -0.0000011 | -0.0000011 |
+| small / 1337 | 2.2341930 | 2.2763444 | +0.0421514 | -0.0058472 |
+| small / 17 | 2.3008793 | 2.2963816 | -0.0044977 | -0.0000614 |
+| small / 42 | 2.2464574 | 2.2431281 | -0.0033293 | -0.0005926 |
+| medium / 1337 | 2.9039253 | 2.9038767 | -0.0000486 | +0.0000000 |
+
+The largest absolute final-loss difference is 0.0422 nats; the largest
+best-checkpoint difference is 0.00585 nats. Both paths choose the same best steps:
+300 for tiny, 200 for all small seeds, and 100 for medium. These short-story
+runs check the training path. Broader text quality needs broader data. Each
+receipt includes the preparation command, data hashes, and all validation points.
+
+- tiny / 1337: [baseline](learning/residual-09a5066-tiny-seed1337.json), [updated](learning/residual-12beb3c-tiny-seed1337.json).
+- small / 1337: [baseline](learning/residual-09a5066-small-seed1337.json), [updated](learning/residual-12beb3c-small-seed1337.json).
+- small / 17: [baseline](learning/residual-09a5066-small-seed17.json), [updated](learning/residual-12beb3c-small-seed17.json).
+- small / 42: [baseline](learning/residual-09a5066-small-seed42.json), [updated](learning/residual-12beb3c-small-seed42.json).
+- medium / 1337: [baseline](learning/residual-09a5066-medium-seed1337.json), [updated](learning/residual-12beb3c-medium-seed1337.json).
