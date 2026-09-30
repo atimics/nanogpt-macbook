@@ -8,8 +8,9 @@ a simple command line for text import, training, resume, and text generation.
 [Raw measurements](benchmarks/results/) · [MIT-0 license](LICENSE)
 
 [CI benchmark guide](benchmarks/CI.md): calibrate timing noise and compare two
-commits on the same Mac runner. The current chart history was measured on a
-local M4 Max; small speed changes are tentative while we rerun them on CI.
+commits on the same Mac runner. All three presets have free hosted GPU reruns.
+Same-commit variation reached 16.31%, so small changes remain tentative. The
+site shows CI comparisons and local M4 Max history in separate chart sections.
 
 Inspired by [Andrej Karpathy's nanoGPT](https://github.com/karpathy/nanoGPT).
 The model and training code here are written for MLX. Models learn to continue

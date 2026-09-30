@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import re
 import runpy
@@ -22,6 +23,43 @@ def test_site_recomputes_raw_measurements():
     altered["results"][0]["summary"]["median_bytes_per_second"] *= 2
     with pytest.raises(ValueError, match="Summary"):
         BUILDER["validate"](altered)
+
+
+def test_ci_charts_use_verified_commit_rates_and_noise():
+    cards = BUILDER["ci_cards"](ROOT)
+    assert 'data-value="11,475"' in cards
+    assert 'data-value="11,722"' in cards
+    assert "Paired change: +2.07%" in cards
+    assert "Same-commit range: -2.74% to +3.66%" in cards
+    assert 'data-baseline-change="+2.2%"' in cards
+    assert "2c7f63f" in cards and "07b11a7" in cards
+
+
+@pytest.mark.parametrize("kind", ["hash", "summary", "missing", "host", "protocol"])
+def test_ci_charts_reject_broken_or_mixed_evidence(tmp_path, kind):
+    target = tmp_path / "benchmarks/ci/36748450305"
+    shutil.copytree(ROOT / "benchmarks/ci/36748450305", target)
+    path = target / "comparison.json"
+    report = json.loads(path.read_text())
+    sample = report["samples"][-1]
+    if kind == "hash":
+        sample["sha256"] = "0" * 64
+    elif kind == "summary":
+        report["summaries"]["medium"]["comparison"]["median_change_percent"] += 10
+    elif kind == "missing":
+        report["samples"].pop()
+    else:
+        receipt_path = target / sample["file"]
+        receipt = json.loads(receipt_path.read_text())
+        if kind == "host":
+            receipt["environment"]["chip"] = "A different GPU"
+        else:
+            receipt["method"]["seed"] = 99
+        receipt_path.write_text(json.dumps(receipt))
+        sample["sha256"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    path.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="CI"):
+        BUILDER["ci_cards"](tmp_path)
 
 
 @pytest.mark.parametrize("kind", ["timing", "count", "source", "warmup"])

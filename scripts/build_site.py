@@ -22,7 +22,7 @@ def close(actual, expected):
     )
 
 
-def validate(receipt: dict):
+def validate(receipt: dict, *, repeats=3):
     """Recompute all displayed measurements from the raw timing samples."""
     if receipt.get("format") != 1:
         raise ValueError("Unsupported benchmark receipt format")
@@ -45,8 +45,8 @@ def validate(receipt: dict):
     if method["execution"] == "pipelined" and method.get("queue_depth") != 2:
         raise ValueError("The pipelined protocol uses two queued steps")
     # The page states these counts. Require them before publishing a comparison.
-    if (method["steps"], method["warmup_steps"], method["repeats"]) != (100, 20, 3):
-        raise ValueError("The site protocol uses 100 steps, 20 warmup steps, and 3 trials")
+    if (method["steps"], method["warmup_steps"], method["repeats"]) != (100, 20, repeats):
+        raise ValueError(f"The site protocol uses 100 steps, 20 warmup steps, and {repeats} trials")
     if receipt["environment"]["device"] not in ("gpu", "cpu"):
         raise ValueError("Unknown benchmark device")
     if not receipt["results"]:
@@ -229,6 +229,136 @@ def timeline_cards(rows, commits):
     return "\n".join(cards)
 
 
+def ci_cards(root):
+    """Render each controlled CI run separately and verify its saved samples."""
+    cards = []
+    for file in sorted((root / "benchmarks/ci").glob("*/comparison.json")):
+        report = json.loads(file.read_text())
+        if report.get("format") != "ci-paired-v1" or report.get("complete") is not True:
+            raise ValueError("Published CI comparisons must be complete")
+        commits = report["commits"]
+        if any(not re.fullmatch(r"[0-9a-f]{40}", value) for value in commits.values()):
+            raise ValueError("CI comparisons need full commit hashes")
+        if report["method"]["pairs_per_phase"] != 6:
+            raise ValueError("The CI chart uses six pairs per phase")
+        samples = {}
+        settings = {}
+        source_hashes = {}
+        for sample in report["samples"]:
+            name = sample["file"]
+            if Path(name).name != name:
+                raise ValueError("CI sample paths must be local filenames")
+            raw = (file.parent / name).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != sample["sha256"]:
+                raise ValueError("CI sample hash disagrees with its receipt")
+            receipt = json.loads(raw)
+            validate(receipt, repeats=1)
+            method = receipt["method"]
+            protocol = tuple(
+                method.get(key)
+                for key in (
+                    "name",
+                    "execution",
+                    "queue_depth",
+                    "seed",
+                    "memory_limit_gib",
+                    "cache_limit_gib",
+                )
+            )
+            if protocol != ("training-loop-v2", "pipelined", 2, 1337, 2, 2):
+                raise ValueError("CI samples need the same timing protocol")
+            (row,) = receipt["results"]
+            preset, phase, pair, side = (
+                sample["preset"],
+                sample["phase"],
+                sample["pair"],
+                sample["side"],
+            )
+            if (
+                phase not in ("calibration", "comparison")
+                or side not in ("a", "b")
+                or pair not in range(1, 7)
+            ):
+                raise ValueError("Invalid CI pair identity")
+            key = (preset, phase, pair, side)
+            if key in samples:
+                raise ValueError("Duplicate CI sample")
+            expected = commits["candidate" if phase == "comparison" and side == "b" else "baseline"]
+            if receipt["source"]["commit"] != expected or sample["commit"] != expected:
+                raise ValueError("CI sample uses the wrong commit")
+            digest = receipt["source"]["python_source_sha256"]
+            if digest != source_hashes.setdefault(expected, digest):
+                raise ValueError("One CI commit has conflicting source hashes")
+            rate = row["summary"]["median_bytes_per_second"]
+            if row["preset"] != preset or not close(sample["bytes_per_second"], rate):
+                raise ValueError("CI sample disagrees with its measurement")
+            identity = (row["model_config"], row["train_config"], receipt["environment"])
+            if identity != settings.setdefault(preset, identity):
+                raise ValueError("CI pairs need the same model and host settings")
+            samples[key] = receipt
+        if len(samples) != 24 * len(settings):
+            raise ValueError("CI comparisons need all calibration and comparison samples")
+        for preset in sorted(settings, key=("tiny", "small", "medium").index):
+            summaries = {}
+            for phase in ("calibration", "comparison"):
+                changes = []
+                for pair in range(1, 7):
+                    rates = [
+                        samples[(preset, phase, pair, side)]["results"][0]["summary"][
+                            "median_bytes_per_second"
+                        ]
+                        for side in ("a", "b")
+                    ]
+                    changes.append((rates[1] / rates[0] - 1) * 100)
+                summaries[phase] = {
+                    "median_change_percent": statistics.median(changes),
+                    "min_change_percent": min(changes),
+                    "max_change_percent": max(changes),
+                }
+                if any(
+                    not close(report["summaries"][preset][phase][key], value)
+                    for key, value in summaries[phase].items()
+                ):
+                    raise ValueError("CI paired summary disagrees with raw samples")
+            rows = []
+            for side in ("a", "b"):
+                measured = [samples[(preset, "comparison", pair, side)] for pair in range(1, 7)]
+                row = measured[0]["results"][0]
+                rows.append(
+                    {
+                        **row,
+                        "source": measured[0]["source"],
+                        "environment": measured[0]["environment"],
+                        "summary": {
+                            "median_bytes_per_second": statistics.median(
+                                r["results"][0]["summary"]["median_bytes_per_second"]
+                                for r in measured
+                            )
+                        },
+                    }
+                )
+            # A/A-only dispatches still show one source commit.
+            unique_commits = list(
+                dict.fromkeys(commits[name] for name in ("baseline", "candidate"))
+            )
+            if len(unique_commits) == 1:
+                rows = rows[:1]
+            card = timeline_cards(rows, unique_commits)
+            calibration, comparison = summaries["calibration"], summaries["comparison"]
+            run = html.escape(file.parent.name)
+            runner = html.escape(report["host"]["runner"]["BENCHMARK_RUNNER_LABEL"])
+            note = (
+                f'<p class="note">{runner} · 6 samples per commit.<br>'
+                f"Paired change: {comparison['median_change_percent']:+.2f}%.<br>"
+                f"Same-commit range: {calibration['min_change_percent']:+.2f}% to "
+                f"{calibration['max_change_percent']:+.2f}%.<br>"
+                f'<a href="{REPO}/tree/main/benchmarks/ci/{run}">Raw samples ↗</a></p>'
+            )
+            cards.append((preset, run, card.replace("</article>", note + "</article>")))
+    cards.sort(key=lambda card: (("tiny", "small", "medium").index(card[0]), card[1]))
+    return "\n".join(card[2] for card in cards)
+
+
 def bars(rows, memory=False):
     key = "peak_memory_mib" if memory else "median_bytes_per_second"
     largest = max(row["summary"][key] for row in rows) or 1
@@ -370,6 +500,7 @@ def build(output: Path, root: Path = ROOT):
         "DATE": max(r["recorded_at"][:10] for r in receipts),
         "HIGHLIGHTS": highlights,
         "TIMELINE_CARDS": timeline_cards(rows, commits),
+        "CI_TIMELINE_CARDS": ci_cards(root),
         "COMMIT_COUNT": str(len(commits)),
         "LATEST_COMMIT": " · ".join(
             dict.fromkeys(row["source"]["commit"][:7] for row in current_rows)

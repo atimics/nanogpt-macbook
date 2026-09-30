@@ -1,0 +1,30 @@
+{
+  "recorded_at": "2026-09-30T17:01:50.671845+00:00",
+  "system": "Darwin",
+  "os_version": "26.6.2",
+  "architecture": "arm64",
+  "python": "3.12.10",
+  "mlx": "0.32.3",
+  "numpy": "2.5.3",
+  "metal_available": true,
+  "device": {
+    "device_name": "Apple Paravirtual device",
+    "max_recommended_working_set_size": 5010800640,
+    "memory_size": 7516192768,
+    "architecture": "air64_v27",
+    "max_buffer_length": 3758096384,
+    "resource_limit": 499000
+  },
+  "runner": {
+    "BENCHMARK_RUNNER_LABEL": "macos-26",
+    "RUNNER_NAME": "GitHub Actions 1000074480",
+    "RUNNER_ARCH": "ARM64",
+    "ImageOS": "macos26",
+    "ImageVersion": "20260907.0351.1",
+    "GITHUB_RUN_ID": "36748450305",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "GITHUB_REPOSITORY": "cenetex/nanogpt-macbook",
+    "GITHUB_SHA": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6"
+  },
+  "gpu_check": 523776.0
+}

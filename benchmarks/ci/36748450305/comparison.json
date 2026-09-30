@@ -1,0 +1,327 @@
+{
+  "format": "ci-paired-v1",
+  "host": {
+    "recorded_at": "2026-09-30T17:01:50.671845+00:00",
+    "system": "Darwin",
+    "os_version": "26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.10",
+    "mlx": "0.32.3",
+    "numpy": "2.5.3",
+    "metal_available": true,
+    "device": {
+      "device_name": "Apple Paravirtual device",
+      "max_recommended_working_set_size": 5010800640,
+      "memory_size": 7516192768,
+      "architecture": "air64_v27",
+      "max_buffer_length": 3758096384,
+      "resource_limit": 499000
+    },
+    "runner": {
+      "BENCHMARK_RUNNER_LABEL": "macos-26",
+      "RUNNER_NAME": "GitHub Actions 1000074480",
+      "RUNNER_ARCH": "ARM64",
+      "ImageOS": "macos26",
+      "ImageVersion": "20260907.0351.1",
+      "GITHUB_RUN_ID": "36748450305",
+      "GITHUB_RUN_ATTEMPT": "1",
+      "GITHUB_REPOSITORY": "cenetex/nanogpt-macbook",
+      "GITHUB_SHA": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6"
+    },
+    "gpu_check": 523776.0
+  },
+  "commits": {
+    "baseline": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+    "candidate": "07b11a7b9a8f0bcc883583776178809faca3190e"
+  },
+  "harness_commit": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6",
+  "harness_sha256": "29da2aa56cad9ab8668e75ba20a37229788ce0ef2009fdeebac4ee8b5fe7d54f",
+  "method": {
+    "pairs_per_phase": 6,
+    "steps": 100,
+    "warmup": 20,
+    "seed": 1337,
+    "memory_gib": 2,
+    "order": "A/B on odd pairs, B/A on even pairs; fresh process for each sample",
+    "calibration": "A and B use the baseline commit before each preset comparison"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-01-a.json",
+      "bytes_per_second": 11179.68916162899,
+      "sha256": "dae64e523bf0dd2dcde24df40d1dd805b57b5ea413bd5c5ba507c88959b19770"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-01-b.json",
+      "bytes_per_second": 11588.772903034424,
+      "sha256": "15eb6fa8fd9c0976182e55ff6a415466dae1681ffe4159ca7b75942d6dc2cc66"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-02-b.json",
+      "bytes_per_second": 11593.750892569858,
+      "sha256": "06058ef5d9fd0b8aac4f61a2280a4a5824ab54a4721156b00615e90cf45a1c2b"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-02-a.json",
+      "bytes_per_second": 11463.48473346198,
+      "sha256": "4ccf1d7f9a6fea02054574a9c5b8836678ec034b53065ea6d0613979eeda09ef"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-03-a.json",
+      "bytes_per_second": 10887.438158628922,
+      "sha256": "ed49e4b5d258297820c3af7b2d9760d20070b0e24ccf78527dc705d117d9a056"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-03-b.json",
+      "bytes_per_second": 10763.143839223589,
+      "sha256": "37f45512f2ffde48376520d760caeaec52a3d7e850febd5ec33c7b8bb300a584"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-04-b.json",
+      "bytes_per_second": 10927.525117183934,
+      "sha256": "8d0302136360bf78a55f482ed056b43c26212729197019b9995618eb83c3085d"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-04-a.json",
+      "bytes_per_second": 11044.456639064516,
+      "sha256": "0cfc7c40f5484716e1c08d59c614f683a76e2632475b1f4d3a5c0b76efa98359"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-05-a.json",
+      "bytes_per_second": 11393.980255075096,
+      "sha256": "46031d1bd558e63462f18c461adb14444f4b8704b4a5c93c8450ca17c97c4046"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-05-b.json",
+      "bytes_per_second": 11647.993153549853,
+      "sha256": "a174855fc84af8b052d1327b237c35a982e236152d5fbed4954454aaf469332c"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-06-b.json",
+      "bytes_per_second": 11468.97690557395,
+      "sha256": "e863207068c75f379a9d6c6e4897aa34e095d2de269abdf683a263bd1638b386"
+    },
+    {
+      "preset": "medium",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-calibration-06-a.json",
+      "bytes_per_second": 11791.93117338399,
+      "sha256": "75fe7d2084db4777cf250ebb2887044c67c9dba83a36858066d94a4662e93af7"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-01-a.json",
+      "bytes_per_second": 9905.98214881335,
+      "sha256": "6a3e992254ff8fadd6eda696fd90dfbdf7e2ada25acad3c1051e33011cbffbaa"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-01-b.json",
+      "bytes_per_second": 11794.278725254133,
+      "sha256": "b637f5fe6ad1494e711f73b72be255cf7199c45535e8844def426d54132f68e1"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-02-b.json",
+      "bytes_per_second": 11974.93519764986,
+      "sha256": "4ae869b013b173fcf5dce4cc07fe5c597dc6abbc5bde808fbccf07f73849e348"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-02-a.json",
+      "bytes_per_second": 11494.19895386408,
+      "sha256": "d30b2088a96340fcf8100c0e16e0e5906a4436feb596ef054c0d8e0fd426c3bd"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-03-a.json",
+      "bytes_per_second": 11461.410469332237,
+      "sha256": "8a4da60a3d338c28f98a1833acc4ce74ea682693a5a7b9511938e1133a70bb71"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-03-b.json",
+      "bytes_per_second": 11632.776891028578,
+      "sha256": "20302c6849ad6166df4fa85b0fdcac49e82ffdedb80ec29f2f0da8bff7f8d272"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-04-b.json",
+      "bytes_per_second": 11632.281790694124,
+      "sha256": "f41d44395667ef204b2e9b35f68b579713fc106e999236ebc470871bcab15f8d"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-04-a.json",
+      "bytes_per_second": 11383.467930705896,
+      "sha256": "cfd463dcb480df00294dfce4758331e54c47685abd2afbfd1077df89767c68ed"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-05-a.json",
+      "bytes_per_second": 11530.15467005725,
+      "sha256": "7c6ac214290d5253862892fc1c82b8b17e5af480cf1bea9ca125331c0d6cc077"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-05-b.json",
+      "bytes_per_second": 11732.051038547204,
+      "sha256": "14f9136b86ba99c39ab2ee93f91269bcd8ea2f47e3bb4f32a878ac0409708376"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "medium-comparison-06-b.json",
+      "bytes_per_second": 11712.152492682975,
+      "sha256": "f436d45cd8f0112ede1e77f433c018e6476771f3c5ff0841ff90ccc571ae094f"
+    },
+    {
+      "preset": "medium",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "medium-comparison-06-a.json",
+      "bytes_per_second": 11488.301380104434,
+      "sha256": "b2fed6b7ea7dd5d2cae9acac66d5ed8369b13e13bc7b4574a7c8a8421b8d966f"
+    }
+  ],
+  "summaries": {
+    "medium": {
+      "calibration": {
+        "pairs": 6,
+        "median_change_percent": 0.038811236596247856,
+        "min_change_percent": -2.738773344768086,
+        "max_change_percent": 3.6591691905844215,
+        "median_absolute_change_percent": 1.6854955361050195,
+        "b_faster_pairs": 3,
+        "ratios": [
+          1.0365916919058442,
+          1.0113635741780709,
+          0.9885836945666762,
+          0.9894126505538541,
+          1.0222936052887766,
+          0.9726122665523191
+        ]
+      },
+      "comparison": {
+        "pairs": 6,
+        "median_change_percent": 2.0671305152039854,
+        "min_change_percent": 1.4951599731540366,
+        "max_change_percent": 19.062184325326935,
+        "median_absolute_change_percent": 2.0671305152039854,
+        "b_faster_pairs": 6,
+        "ratios": [
+          1.1906218432532694,
+          1.0418242494074952,
+          1.0149515997315404,
+          1.0218574744974749,
+          1.0175102914286362,
+          1.0194851358066048
+        ]
+      }
+    }
+  }
+}
