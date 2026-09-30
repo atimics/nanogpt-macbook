@@ -154,7 +154,9 @@ def _score_output_kernel():
                     simdgroup_load(b, v + (head * N + key) * D + d, D);
                     simdgroup_multiply_accumulate(acc, a, b, acc);
                 }
-                simdgroup_store(acc, attended + (head * N + query) * D + d, D);
+                simdgroup_store(acc,
+                    attended + ((head / H) * N * H + query * H + head % H) * D + d,
+                    H * D);
             }
         """,
     )
@@ -163,14 +165,20 @@ def _score_output_kernel():
 def _score_output(q, k, v):
     length, width = q.shape[-2:]
     threads = 128 if length <= 256 else 256
-    return _score_output_kernel()(
+    # Longer contexts store values in projection order, so the model's
+    # transpose and reshape can use the same buffer.
+    projection_order = length > 256
+    heads = q.shape[1] if projection_order else 1
+    shape = (q.shape[0], length, q.shape[1], width) if projection_order else q.shape
+    probs, output = _score_output_kernel()(
         inputs=[q, k, v],
-        template=[("N", length), ("D", width), ("S", threads // 32)],
-        output_shapes=[(*q.shape[:-1], length), q.shape],
+        template=[("N", length), ("D", width), ("S", threads // 32), ("H", heads)],
+        output_shapes=[(*q.shape[:-1], length), shape],
         output_dtypes=[mx.float32, mx.float32],
         grid=(length // 8 * threads, q.size // (length * width), 1),
         threadgroup=(threads, 1, 1),
     )
+    return probs, output.transpose(0, 2, 1, 3) if projection_order else output
 
 
 @lru_cache(maxsize=1)
