@@ -290,3 +290,71 @@ These short runs on a
 4,544-byte story describe this training check; broader text quality needs a
 larger evaluation. The refreshed [tiny learning receipt](learning/demo-ddb8a6f.json)
 reaches 2.1712084 after 300 steps.
+
+## Attention tensor layouts
+
+Source `974dde6` explicitly packs Q, K, V, and the incoming gradient before
+masked products. In MLX 0.32.3, the Metal masked-matrix implementation can copy
+an operand and then use batch strides from the original input. Width slices
+and reversed views expose incorrect values. Explicit packing gives each
+product a consistent layout. The [pinned MLX implementation](https://github.com/ml-explore/mlx/blob/v0.32.3/mlx/backend/metal/matmul.cpp#L1805)
+shows the copy and batch-stride handling.
+
+The new regression fails on `95eb883`. All 185 local tests pass after the fix,
+including 16 new cases covering projection views, width slices, reversed
+views, and broadcast inputs in eager and compiled calls. Each case compares
+outputs and all three gradients with native attention on contiguous operands.
+Existing checks cover float64 gradients, full model updates, accumulation,
+and checkpoint resume.
+
+The [200-pair receipt](diagnostics/attention-974dde6-adjacent.json) compares
+complete training steps with the attention at `95eb883`. It uses the same
+adjacent-step protocol as the score-gradient comparison:
+
+| Preset | Median throughput change | Total-time throughput change | Faster pairs |
+| --- | ---: | ---: | ---: |
+| tiny | +0.5% | +0.6% | 110 / 200 |
+| small | -1.1% | -1.0% | 30 / 200 |
+| medium | +0.3% | +0.3% | 136 / 200 |
+
+Tiny uses the same attention operations in both paths. Its difference shows
+short-run timing variation. Small pays about 1% for explicit packing. This
+change fixes tensor-layout correctness; further speed work uses this path as
+the baseline.
+
+Repeat the paired comparison with:
+
+```bash
+uv run python scripts/compare_attention.py --baseline-ref 95eb883 \
+  --preset all --pairs 200 --steps 1 --warmup 20 \
+  --out benchmarks/diagnostics/attention-layouts-local.json
+```
+
+The [baseline](results/m4-max-95eb883-gpu.json) and
+[updated](results/m4-max-974dde6-gpu.json) standard receipts use one model,
+a 2 GiB memory/cache limit, and three trials of 100 measured steps:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Baseline peak MiB | Updated peak MiB |
+| --- | ---: | ---: | ---: | ---: |
+| tiny | 389,597 | 390,409 | 142.6 | 142.6 |
+| small | 156,706 | 154,739 | 975.3 | 999.3 |
+| medium | 55,744 | 56,227 | 1882.4 | 1884.2 |
+
+Explicit packing adds 24 MiB for small and 1.875 MiB for medium in these runs.
+The medium trial ranges overlap. Both receipts remain in the commit history.
+
+Three 300-step small-model story runs use the same seeds and settings as the
+prior learning checks. The baseline receipts at `ddb8a6f` share the training
+source hash of `95eb883`. Both final and best measured validation losses follow:
+
+| Seed | Baseline final | Updated final | Difference | Baseline best | Updated best |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1337 | 2.257929 | [2.285701](learning/small-974dde6-seed1337.json) | +0.027773 | 2.207986 | 2.228266 |
+| 17 | 2.299945 | [2.299168](learning/small-974dde6-seed17.json) | -0.000777 | 2.197998 | 2.197990 |
+| 42 | 2.246769 | [2.244856](learning/small-974dde6-seed42.json) | -0.001913 | 2.204979 | 2.204514 |
+
+The largest final difference is +0.0278 nats for seed 1337. All best values
+occur at step 200. Packing changes the physical layout used by matrix
+operations, and small float32 differences grow over later updates. These
+short checks use a 455-byte validation split; broader text quality needs
+a larger evaluation. The receipts retain every reported value.

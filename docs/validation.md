@@ -302,3 +302,25 @@ differ by -0.0106, +0.000004, and +0.0007 nats for seeds 1337, 17, and 42.
 Full traces, raw timings, and repeat
 commands are in the [attention report](../benchmarks/README.md#attention-score-gradients).
 The tiny story check reaches 2.1712084 after 300 steps.
+
+## Attention tensor layout check, 30 September 2026
+
+Profiling exposed a layout failure in the pinned MLX masked-matrix backend.
+Sliced and reversed operands can be copied internally while the product
+keeps their earlier batch strides. Source `974dde6` explicitly packs Q/K/V
+and the incoming gradient before those products.
+
+A new sliced-input regression fails on the prior source. All 185 local tests
+pass with the fix, including 16 eager/compiled layout cases and the existing
+float64 gradient, model-update, accumulation, and resume checks. The six Node
+chart checks, site build, Ruff, and formatting pass.
+
+The [layout report](../benchmarks/README.md#attention-tensor-layouts) records
+200 adjacent pairs and fresh standard trials. The paired changes are +0.5%
+for tiny, -1.1% for small, and +0.3% for medium. Tiny has the same attention
+operations in both paths. Small uses an extra 24 MiB; medium uses an extra
+1.875 MiB. These are the measured costs of the layout fix.
+
+Three small-model story runs preserve their complete learning traces. The
+largest final loss change is +0.0278 nats at seed 1337. The report gives both
+final and best validation losses for all three seeds.
