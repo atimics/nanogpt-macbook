@@ -17,6 +17,8 @@ def _residual_projection(residual, hidden, projection):
     if (
         mx.default_device() == mx.gpu
         and residual.dtype == hidden.dtype == projection.weight.dtype == mx.float32
+        # Wider training MLPs measured faster with separate operations.
+        and (hidden.shape[-1] <= 1024 or not projection.training)
     ):
         return mx.addmm(residual, hidden, projection.weight.T)
     return residual + projection(hidden)

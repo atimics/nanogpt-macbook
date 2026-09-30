@@ -154,6 +154,10 @@ def benchmark(
             "activation": "explicit stable GELU derivative on Metal; MLX derivative on CPU",
             "normalization": "saved float32 LayerNorm statistics on Metal; native MLX on CPU",
             "clipping": "grouped float32 global norm on Metal; MLX clipping on CPU",
+            "residual_projection": (
+                "native MLX addmm for float32 Metal projections with up to 1024 input "
+                "features; separate projection and addition for wider training MLPs and CPU"
+            ),
             "memory_scope": "peak active MLX allocation during measured steps, including weights",
             "summary": "median of per-trial throughput; range is minimum to maximum trial",
         },
