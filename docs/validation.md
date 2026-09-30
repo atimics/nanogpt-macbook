@@ -419,7 +419,7 @@ baseline and previous percentages.
 The original resize sequence now fits even in immediate readings. The text
 fixture fits after enlargement and reduction at the same width. Browser checks
 cover Chromium and WebKit, widths 240–1440 px, CSS zoom at 125% and 200%, and
-249 points with a sparse CPU series. They check visible glyphs on both axes,
+a synthetic 249-point fixture with a sparse CPU series. They check visible glyphs on both axes,
 label spacing, keyboard focus, point links and browser errors. The ordinary
 controls audit also passes 120 states with all 69 points, eight percentage
 badges, both metrics, device filters and expanded results. Seven Node
