@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO = "https://github.com/atimics/nanogpt-macbook"
+REPO = "https://github.com/cenetex/nanogpt-macbook"
 
 
 def close(actual, expected):

@@ -1,0 +1,65 @@
+name: Mac GPU benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Host (xlarge needs Team and paid runner access)'
+        type: choice
+        options: [macos-26, macos-26-xlarge]
+        default: macos-26
+      mode:
+        description: 'Probe GPU access, or run calibration and comparison'
+        type: choice
+        options: [probe, compare]
+        default: probe
+      baseline:
+        description: 'Full baseline commit hash (empty uses this workflow commit)'
+        type: string
+      candidate:
+        description: 'Full candidate commit hash (empty uses this workflow commit)'
+        type: string
+      preset:
+        description: Model size
+        type: choice
+        options: [tiny, small, medium, all]
+        default: tiny
+permissions:
+  contents: read
+concurrency:
+  group: mac-gpu-benchmark
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    env:
+      BENCHMARK_RUNNER_LABEL: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.3'
+          enable-cache: false
+      - run: uv sync --frozen --python 3.12
+      - name: Probe Metal and save the host details
+        run: uv run python scripts/ci_benchmark.py probe --out ci-results
+      - name: Calibrate and compare on this worker
+        if: inputs.mode == 'compare'
+        env:
+          BASELINE: ${{ inputs.baseline || github.sha }}
+          CANDIDATE: ${{ inputs.candidate || github.sha }}
+          PRESET: ${{ inputs.preset }}
+        run: >-
+          uv run python scripts/ci_benchmark.py compare --out ci-results
+          --baseline "$BASELINE" --candidate "$CANDIDATE" --preset "$PRESET"
+      - name: Save raw samples and partial results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-results/
+          if-no-files-found: warn
+          retention-days: 90
