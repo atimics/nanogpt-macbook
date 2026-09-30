@@ -20,7 +20,7 @@ def select(device):
 def assert_same(actual, expected):
     for (a_key, a), (e_key, e) in zip(tree_flatten(actual), tree_flatten(expected), strict=True):
         assert a_key == e_key
-        np.testing.assert_allclose(np.array(a), np.array(e), atol=2e-7, rtol=2e-6)
+        np.testing.assert_allclose(np.array(a), np.array(e), atol=2e-7, rtol=2e-6, err_msg=a_key)
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
@@ -96,7 +96,7 @@ def test_empty_tree_empty_arrays_and_negative_limit():
 def test_complete_updates_match_native_clipping(accumulation, width, monkeypatch):
     select("gpu")
     saved = []
-    for implementation in (optim.clip_grad_norm, clip_grad_norm):
+    for implementation in (optim.clip_grad_norm, optim.clip_grad_norm, clip_grad_norm):
         monkeypatch.setattr(engine, "clip_grad_norm", implementation)
         mx.random.seed(16)
         model = GPT(ModelConfig(context=17, layers=2, heads=2, width=width))
@@ -111,4 +111,15 @@ def test_complete_updates_match_native_clipping(accumulation, width, monkeypatch
             block = rng.integers(0, 256, (accumulation, 3, 18), dtype=np.int32)
             step(mx.array(block[:, :, :-1]), mx.array(block[:, :, 1:]), 0.001)
         saved.append((model.parameters(), optimizer.state))
-    assert_same(saved[0], saved[1])
+    for label, state in zip(("native repeat", "grouped clipping"), saved[1:], strict=True):
+        for (key, reference), (_, actual) in zip(
+            tree_flatten(saved[0]), tree_flatten(state), strict=True
+        ):
+            if key == "0.tokens.weight":
+                print(
+                    label,
+                    key,
+                    "max absolute error",
+                    np.max(np.abs(np.array(actual) - np.array(reference))),
+                )
+        assert_same(saved[0], state)

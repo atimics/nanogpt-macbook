@@ -33,13 +33,30 @@ def test_last_token_logits_and_gradients_match_full_output(device, layers, lengt
     _, expected_grads = nn.value_and_grad(model, lambda net: (net(inputs)[:, -1:] * weight).sum())(
         model
     )
+    mx.eval(expected_grads)
+    _, repeated_grads = nn.value_and_grad(model, lambda net: (net(inputs)[:, -1:] * weight).sum())(
+        model
+    )
+    mx.eval(repeated_grads)
     _, actual_grads = nn.value_and_grad(
         model, lambda net: (net(inputs, last_token_only=True) * weight).sum()
     )(model)
+    repeat = dict(tree_flatten(repeated_grads))
     for (name, before), (other, after) in zip(
         tree_flatten(expected_grads), tree_flatten(actual_grads), strict=True
     ):
         assert name == other
+        if name == "tokens.weight":
+            print(
+                "native repeat",
+                "max absolute error",
+                np.max(np.abs(np.array(repeat[name]) - np.array(before))),
+            )
+            print(
+                "last token",
+                "max absolute error",
+                np.max(np.abs(np.array(after) - np.array(before))),
+            )
         np.testing.assert_allclose(
             np.array(after), np.array(before), atol=5e-6, rtol=5e-5, err_msg=name
         )
