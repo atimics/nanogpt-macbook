@@ -218,3 +218,40 @@ def test_metal_training_resume_with_accumulation(corpus, tmp_path, context, widt
             np.testing.assert_allclose(
                 np.array(actual[name]), np.array(expected[name]), atol=1e-7, rtol=1e-5
             )
+
+
+@pytest.mark.parametrize("length,width", [(256, 32), (512, 48)])
+@pytest.mark.parametrize("compiled", [False, True])
+@pytest.mark.parametrize("layout", ["projection", "sliced", "reversed", "broadcast"])
+def test_blocked_attention_handles_input_and_gradient_layouts(length, width, compiled, layout):
+    use_device("gpu")
+    mx.random.seed(91)
+    shape = (2, 3, length, width)
+    arrays = []
+    for _ in range(4):
+        if layout == "projection":
+            value = mx.random.normal((2, length, 3, 3 * width))
+            value = value[..., width : 2 * width].transpose(0, 2, 1, 3)
+        elif layout == "sliced":
+            value = mx.random.normal((2, 3, length, 2 * width))[..., ::2]
+        elif layout == "reversed":
+            value = mx.random.normal(shape)[:, :, ::-1, ::-1]
+        else:
+            value = mx.broadcast_to(mx.random.normal((1, 1, length, width)), shape)
+        arrays.append(value)
+    q, k, v, cotangent = arrays
+
+    def actual(q, k, v):
+        return mx.vjp(training_attention, [q, k, v], [cotangent])
+
+    # Contiguous reference operands also isolate the layout check from MLX's
+    # own copies inside the native attention implementation.
+    def expected(q, k, v):
+        return mx.vjp(reference, [q, k, v], [mx.contiguous(cotangent)])
+
+    if compiled:
+        actual, expected = mx.compile(actual), mx.compile(expected)
+    values, gradients = actual(q, k, v)
+    reference_values, reference_gradients = expected(*(mx.contiguous(a) for a in (q, k, v)))
+    for a, e in zip((*values, *gradients), (*reference_values, *reference_gradients), strict=True):
+        np.testing.assert_allclose(np.array(a), np.array(e), atol=5e-6, rtol=5e-5)

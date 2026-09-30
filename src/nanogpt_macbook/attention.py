@@ -155,7 +155,7 @@ def _blocked_attention(block_size):
     @apply.vjp
     def vjp(primals, cotangents, outputs):
         q, k, v = primals
-        grad = cotangents[0]
+        grad = mx.contiguous(cotangents[0])
         output, probs = outputs
         length, width = q.shape[-2:]
         # sum(grad_output * output) equals sum(grad_probs * probs) per row.
@@ -202,6 +202,10 @@ def training_attention(q, k, v):
             and 32 <= width <= 64
             and width % 8 == 0
         ):
+            # MLX 0.32.3 masked products can retain the original batch strides
+            # after an internal copy. Pack here so every product uses the same
+            # layout, including sliced, reversed, and broadcast inputs.
+            q, k, v = (mx.contiguous(item) for item in (q, k, v))
             return _blocked_attention(32 if length == 256 else 64)(q, k, v)
         probabilities = _softmax(q.shape[-1])(q @ k.swapaxes(-1, -2))
         return probabilities @ v
