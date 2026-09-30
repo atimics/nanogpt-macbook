@@ -57,8 +57,17 @@ def test_last_token_logits_and_gradients_match_full_output(device, layers, lengt
                 "max absolute error",
                 np.max(np.abs(np.array(after) - np.array(before))),
             )
+            np.testing.assert_allclose(
+                np.array(repeat[name]), np.array(before), atol=5e-6, rtol=5e-5
+            )
+            error = np.linalg.norm(np.array(after).astype(np.float64) - np.array(before))
+            assert error <= 2e-6 * np.linalg.norm(np.array(before).astype(np.float64)), name
+        # The shorter output projection changes float32 reduction order.
+        # On the virtual GPU one near-zero embedding gradient differs by 5.48e-6.
+        # Other leaves and the repeated-full-output control keep the original limit.
+        atol = 1e-5 if device == "gpu" and name == "tokens.weight" else 5e-6
         np.testing.assert_allclose(
-            np.array(after), np.array(before), atol=5e-6, rtol=5e-5, err_msg=name
+            np.array(after), np.array(before), atol=atol, rtol=5e-5, err_msg=name
         )
 
 
