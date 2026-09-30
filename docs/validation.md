@@ -324,3 +324,29 @@ operations in both paths. Small uses an extra 24 MiB; medium uses an extra
 Three small-model story runs preserve their complete learning traces. The
 largest final loss change is +0.0278 nats at seed 1337. The report gives both
 final and best validation losses for all three seeds.
+
+## Results panel spacing, 30 September 2026
+
+The current 56-point page fits ordinary 320–1440 px browser widths. A smaller
+embedded panel exposed another spacing case: setting `#results` to 240 px in a
+1280 px viewport kept 48 px padding on each side. The remaining 144 px held a
+222 px section title, while the metric control needed 93 px in 86 px. Chromium
+and WebKit reproduced these bounds. With 24 px minimum text, the fixed method
+columns also overlapped; at a 240 px viewport the page grew to 247 px.
+
+The results section now applies its spacing through an inner wrapper sized
+from the section width. Chart padding follows that same width. Titles and
+controls wrap, the metric button reads “Speed”, and the section label reads
+“Results”. Method labels and terminal controls also wrap with larger text.
+The 240 px results panel now gives its content 208 px while keeping its outer
+width at 240 px. All commit points and both percentage comparisons remain.
+
+A rendered audit passes 120 states in Chromium, Chromium with 24 px minimum
+text, and WebKit. It covers widths 320, 375, 600, 851, 1100, 1280, and 1440 px,
+plus the 240 px panel inside a 1280 px viewport and repeated resizing. Each
+state opens results and checks Speed/Memory and CPU/All controls. Page, card,
+plot, badge, control, value, and table bounds fit. Visible SVG text and circles
+fit on both axes. All 56 points and eight percentage badges remain present.
+A second audit passes 36 states with a 236-point history, including 60 later
+GPU-only commits. Browser error logs are clear. Six Node regressions, eight
+Python site tests, Ruff, and format checks pass.
