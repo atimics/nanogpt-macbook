@@ -12,6 +12,10 @@ commits on the same Mac runner. All three presets have free hosted GPU reruns.
 Same-commit variation reached 16.31%, so small changes remain tentative. The
 site shows CI comparisons and local M4 Max history in separate chart sections.
 
+[24-hour M2 agent process](benchmarks/AGENT_RUNS.md): plan the number of AI edit,
+test, and benchmark iterations per day. The calculator separates host cost,
+inference cost, measured timings, and planning assumptions.
+
 Inspired by [Andrej Karpathy's nanoGPT](https://github.com/karpathy/nanoGPT).
 The model and training code here are written for MLX. Models learn to continue
 text from your own corpus. The bundled story provides a quick first experiment.

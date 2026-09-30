@@ -1,5 +1,9 @@
 # Benchmarks on a CI Mac
 
+For a dedicated AWS M2 session, use the [24-hour agent process](AGENT_RUNS.md)
+and its budget calculator. New comparisons save total wall time in
+`comparison.json` so the first M2 run can replace the initial capacity estimate.
+
 Use the [Mac GPU benchmark workflow](https://github.com/cenetex/nanogpt-macbook/actions/workflows/benchmark.yml)
 to measure speed away from a busy development Mac. Run **probe** first. Its
 `host.json` records Metal access, a small GPU calculation, the runner image,

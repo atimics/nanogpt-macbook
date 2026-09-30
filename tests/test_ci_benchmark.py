@@ -104,6 +104,8 @@ def test_alternates_order_and_calibrates_on_the_same_commit(monkeypatch, tmp_pat
     report = json.loads((tmp_path / "comparison.json").read_text())
     assert report["complete"] is True
     assert len(report["samples"]) == 8
+    assert report["timing"]["elapsed_seconds"] > 0
+    assert report["timing"]["completed_at"] >= report["timing"]["started_at"]
     assert (tmp_path / "summary.md").is_file()
 
 
