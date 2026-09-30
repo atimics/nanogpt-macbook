@@ -193,14 +193,12 @@ def timeline_cards(rows, commits):
             anchor = "start" if index == 0 else "end" if index == len(series) - 1 else "middle"
             chart.append(
                 f'<a href="{REPO}/commit/{sha}" data-position="{x:.2f}" '
+                f'data-value="{value:,.0f}" data-commit="{sha[:7]}" '
                 f'data-label="{str(index in (0, len(series) - 1)).lower()}" '
                 f'aria-label="Commit {sha[:7]}: '
                 f'{value:,.0f} bytes per second">'
                 f"<title>{sha[:7]}: {value:,.0f} bytes per second</title>"
                 f'<circle cx="{x:.2f}%" cy="{y:.1f}" r="5" fill="#187556"/>'
-                f'<text class="timeline-label" x="{x:.2f}%" y="{y - 11:.1f}" '
-                f'text-anchor="{anchor}" '
-                f'font-size="10" fill="#172b27">{value / 1000:.1f}k</text>'
                 f'<text class="timeline-label" x="{x:.2f}%" y="190" text-anchor="{anchor}" '
                 f'font-size="10" fill="#187556">{sha[:7]}</text></a>'
             )
@@ -214,9 +212,12 @@ def timeline_cards(rows, commits):
         label = "Metal GPU" if device == "gpu" else "CPU"
         cards.append(
             f'<article class="timeline-card"><div class="timeline-head"><h3>{preset} / {label}</h3>'
-            f'<div class="timeline-changes"><span>{baseline_change:+.1f}% vs baseline</span>'
+            f'<div class="timeline-changes"><span>Latest: {baseline_change:+.1f}% vs baseline</span>'
             f"<span>{change_text}</span></div></div>"
-            '<p class="timeline-unit">Bytes / second</p><div class="timeline-plot">'
+            '<div class="timeline-reading">'
+            f"<span data-point-value>{last:,.0f} bytes/s</span>"
+            f"<span data-point-commit>Latest · {series[-1]['source']['commit'][:7]}</span>"
+            '</div><div class="timeline-plot">'
             f"{''.join(chart)}</div></article>"
         )
     return "\n".join(cards)

@@ -61,8 +61,13 @@
 .method-list dd{flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
 .terminal-bar{flex-wrap:wrap;gap:10px}
 
-.timeline-unit{font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:22px}
-.timeline-unit+.timeline-plot{margin-top:0}
+.timeline-reading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:22px;font-family:var(--mono);line-height:1.5}
+.timeline-reading span{max-width:100%;overflow-wrap:anywhere}
+.timeline-reading [data-point-value]{font-size:16px;font-weight:600}
+.timeline-reading [data-point-commit]{font-size:10px;color:var(--muted)}
+.timeline-reading+.timeline-plot{margin-top:0}
+.timeline-plot circle{r:min(5px,var(--point-radius,5px))}
+.timeline-plot a[data-active=true] circle{fill:#97a80c}
 .timeline-plot{container-type:inline-size}
 .timeline-label{transform:translateX(calc(clamp(2px,calc(var(--label-position) - var(--label-offset)),calc(100cqi - var(--label-width) - 2px)) + var(--label-offset)))}
 .timeline-plot a:focus-visible{outline:0}
