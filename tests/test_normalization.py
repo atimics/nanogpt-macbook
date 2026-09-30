@@ -83,6 +83,26 @@ def test_gradients_match_float64_finite_differences(constant):
         np.testing.assert_allclose(np.array(grad), expected, atol=2e-5, rtol=3e-5)
 
 
+@pytest.mark.parametrize("compiled", [False, True])
+@pytest.mark.parametrize(
+    "shape,offset,scale", [((5, 33), 0, 1), ((17, 256), 4, 0), ((9, 512), 4, 0.001)]
+)
+def test_forward_values_match_float64_reference(compiled, shape, offset, scale):
+    select("gpu")
+    layer = LayerNorm(shape[-1])
+    layer.weight = mx.random.normal((shape[-1],))
+    layer.bias = mx.random.normal((shape[-1],))
+    forward = mx.compile(layer) if compiled else layer
+    # Repeated calls also check that each input supplies its own saved statistics.
+    for _ in range(3):
+        x = mx.random.normal((*shape, 2))[..., 0] * scale + offset
+        array = np.array(x).astype(np.float64)
+        centered = array - array.mean(axis=-1, keepdims=True)
+        normalized = centered / np.sqrt((centered**2).mean(axis=-1, keepdims=True) + layer.eps)
+        expected = normalized * np.array(layer.weight) + np.array(layer.bias)
+        np.testing.assert_allclose(np.array(forward(x)), expected, atol=3e-6, rtol=3e-5)
+
+
 @pytest.mark.parametrize("width", [32, 128, 256, 384])
 def test_full_model_gradients_match_native_normalization(width, monkeypatch):
     select("gpu")

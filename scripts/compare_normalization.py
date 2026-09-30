@@ -2,11 +2,14 @@
 
 import argparse
 import gc
+import hashlib
 import statistics
+import subprocess
 import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 import mlx.core as mx
@@ -23,7 +26,7 @@ from nanogpt_macbook.model import GPT
 from nanogpt_macbook.normalization import LayerNorm
 
 
-def compare(preset, pairs, steps, warmup, component="normalization"):
+def compare(preset, pairs, steps, warmup, component="normalization", reference=None):
     config, training = PRESETS[preset]
     records = []
     if component == "clipping":
@@ -31,8 +34,9 @@ def compare(preset, pairs, steps, warmup, component="normalization"):
         native, grouped = optim.clip_grad_norm, engine.clip_grad_norm
     else:
         target, attribute = LayerNorm, "__call__"
-        native, grouped = nn.LayerNorm.__call__, LayerNorm.__call__
-    for name, implementation in (("native", native), ("grouped", grouped)):
+        native, grouped = reference or nn.LayerNorm.__call__, LayerNorm.__call__
+    before, after = ("reference", "updated") if reference else ("native", "grouped")
+    for name, implementation in ((before, native), (after, grouped)):
         with patch.object(target, attribute, implementation):
             mx.random.seed(training.seed)
             rng = np.random.default_rng(training.seed)
@@ -75,16 +79,16 @@ def compare(preset, pairs, steps, warmup, component="normalization"):
                     "bytes_per_second": rates[name],
                 }
             )
-        ratios.append(rates["grouped"] / rates["native"])
+        ratios.append(rates[after] / rates[before])
         if (pair + 1) % max(1, pairs // 10) == 0 or pair + 1 == pairs:
             median = statistics.median(ratios)
-            print(f"{preset} pair {pair + 1:3}: median grouped / native {median:.4f}", flush=True)
+            print(f"{preset} pair {pair + 1:3}: median {after} / {before} {median:.4f}", flush=True)
     return {
         "preset": preset,
         "model_config": asdict(config),
         "train_config": asdict(training),
         "samples": samples,
-        "grouped_over_native_ratios": ratios,
+        f"{after}_over_{before}_ratios": ratios,
         "median_ratio": statistics.median(ratios),
     }
 
@@ -98,12 +102,35 @@ def main(component="normalization"):
     parser.add_argument("--pairs", type=int, default=200)
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument("--baseline-ref", help="Use LayerNorm from this trusted local Git ref")
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
     if args.out.exists():
         parser.error("Choose a new output path")
+    if args.baseline_ref and component != "normalization":
+        parser.error("A baseline ref applies to the normalization comparison")
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    reference = None
+    reference_info = None
+    if args.baseline_ref:
+        root = Path(__file__).resolve().parent.parent
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--verify", "--end-of-options", f"{args.baseline_ref}^{{commit}}"],
+            cwd=root,
+            text=True,
+        ).strip()
+        path = "src/nanogpt_macbook/normalization.py"
+        source = subprocess.check_output(["git", "show", f"{commit}:{path}"], cwd=root)
+        module = ModuleType("reference_normalization")
+        exec(compile(source, f"{commit}:{path}", "exec"), module.__dict__)
+        reference = module.LayerNorm.__call__
+        reference_info = {
+            "commit": commit,
+            "path": path,
+            "sha256": hashlib.sha256(source).hexdigest(),
+            "scope": "Current training code with LayerNorm from this commit",
+        }
     # Both compiled models stay alive during each comparison.
     select_device("gpu", 4)
     receipt = {
@@ -127,10 +154,19 @@ def main(component="normalization"):
         },
         "results": [],
     }
+    if reference_info:
+        receipt["reference"] = reference_info
+        receipt["method"].update(
+            name="alternating-layernorm-reference-v1",
+            order="reference then updated on odd pairs; updated then reference on even pairs",
+            summary="median of updated/reference throughput ratios across adjacent pairs",
+        )
     for preset in PRESETS if args.preset == "all" else [args.preset]:
         gc.collect()
         mx.clear_cache()
-        receipt["results"].append(compare(preset, args.pairs, args.steps, args.warmup, component))
+        receipt["results"].append(
+            compare(preset, args.pairs, args.steps, args.warmup, component, reference)
+        )
         write_json(args.out, receipt)
     print(f"Saved comparison to {args.out}")
 
