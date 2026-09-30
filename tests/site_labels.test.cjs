@@ -77,3 +77,65 @@ test('larger rendered glyphs keep the latest label clear', () => {
   const {points} = render([9, 12, 20, 25], 244, [64, 86]);
   checkBounds(points, 244);
 });
+
+test('result layout measures the table after resize, reopen, and filtering', () => {
+  const context = {
+    document: {
+      querySelectorAll: () => [],
+      getElementById: () => ({addEventListener() {}}),
+    },
+    ResizeObserver: class {},
+  };
+  vm.runInNewContext(script, context);
+  let needed = 1190;
+  const region = {
+    clientWidth: 1104,
+    dataset: {layout: 'cards'},
+    querySelector: () => ({get scrollWidth() {
+      return region.dataset.layout === 'cards' ? region.clientWidth : needed;
+    }}),
+  };
+  for (const width of [1104, 320, 1280, 0, 1280, 320, 1104]) {
+    region.clientWidth = width;
+    context.fitResultTable(region);
+    if (width) assert.equal(region.dataset.layout, width < needed ? 'cards' : 'table');
+  }
+  needed = 1000; // A device filter can reduce the table's width.
+  context.fitResultTable(region);
+  assert.equal(region.dataset.layout, 'table');
+});
+
+test('result resizing fits outside the observer cycle and ignores height changes', () => {
+  let observer;
+  let frame;
+  let measures = 0;
+  const region = {
+    clientWidth: 320,
+    dataset: {layout: 'cards'},
+    querySelector: () => ({get scrollWidth() { measures++; return 1000; }}),
+  };
+  const details = {open: true, querySelector: () => region, addEventListener() {}};
+  const context = {
+    document: {
+      querySelectorAll: selector => selector === '.results-details' ? [details] : [],
+      getElementById: () => ({addEventListener() {}}),
+    },
+    getComputedStyle: () => ({fontSize: '20px'}),
+    ResizeObserver: class { constructor(callback) { observer = callback; } observe() {} },
+    requestAnimationFrame: callback => { frame = callback; return 1; },
+    cancelAnimationFrame() { frame = undefined; },
+  };
+  vm.runInNewContext(script, context);
+  observer([{contentRect: {width: 320, height: 500}}]);
+  assert.equal(measures, 0);
+  frame();
+  assert.equal(measures, 1);
+  assert.equal(region.dataset.layout, 'cards');
+  frame = undefined;
+  observer([{contentRect: {width: 320, height: 1000}}]);
+  assert.equal(frame, undefined);
+  region.clientWidth = 1280;
+  observer([{contentRect: {width: 1280, height: 1000}}]);
+  frame();
+  assert.equal(region.dataset.layout, 'table');
+});
