@@ -374,8 +374,9 @@ def _sample_window(model, window, count, temperature, top_k):
         state, token = step(state)
         generated.append(token)
         mx.async_eval(state, token)
-        if index and index % 8 == 0:
-            mx.eval(generated[-8])
+        # Keep at most two windows queued while the host prepares the next one.
+        if index:
+            mx.eval(generated[-2])
     return mx.stack(generated).tolist()
 
 
