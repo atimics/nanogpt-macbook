@@ -1,0 +1,497 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "5833c6688928254895e1eba1a46401d6a7c2844956e7ea6ad8cb2a29b8d34c3c",
+    "commit": "8ae57bc2c5ce1f069bc2afdb3ef9afddda4185c0",
+    "source_dirty": false
+  },
+  "reference": {
+    "commit": "7f741e37a7c8d4b5fabb4f18308dfc0fd8d235af",
+    "files_sha256": {
+      "src/nanogpt_macbook/model.py": "fdf2046f4cbf50f9ec6e4dde2ea7720f9bc23e68d0ddad8c0772027707246eb2",
+      "src/nanogpt_macbook/engine.py": "d55fc3dca2078657b1635feb6e765b62bfa1a2fbd6b25e1db6d6e03d95dc534a"
+    },
+    "scope": "current shared operators with model and engine code from this commit"
+  },
+  "device": "cpu",
+  "method": {
+    "pairs": 10,
+    "generated_bytes": 200,
+    "temperature": 0.8,
+    "top_k": 40,
+    "sampling_seed": 42,
+    "weight_seed": 1337,
+    "timed_work": "complete generation after weight load; alternating fresh models; eager queued windows; shared process"
+  },
+  "prototype_source": "import argparse\nimport json\nimport subprocess\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nimport compare_sampling\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\n\n\ndef sample_window(model, window, count, temperature, top_k):\n    state = mx.array([window], dtype=mx.int32)\n    generated = []\n    for index in range(count):\n        logits = model(state, last_token_only=True)[0,-1]\n        token = engine._sample_token(logits, temperature, top_k).astype(state.dtype)\n        state = mx.concatenate((state[:,1:],token.reshape(1,1)),axis=1)\n        generated.append(token)\n        mx.async_eval(state,token)\n        if index and index % 8 == 0:\n            mx.eval(generated[-8])\n    return mx.stack(generated).tolist()\n\n\nargs = argparse.Namespace(out=Path('/private/tmp/ngpt-queued-window-eager-cpu.json'),pairs=10,tokens=200,temperature=0.8,top_k=40,seed=42)\nassert not args.out.exists()\nengine.select_device('cpu',2)\nreference, info = compare_sampling.reference_modules('7f741e3')\nmodule = ModuleType('eager_queued_engine')\nmodule.__package__ = 'nanogpt_macbook'\nmodule.sample_window = sample_window\nsource = subprocess.check_output(['git','show','7f741e3:src/nanogpt_macbook/engine.py'],text=True)\nsource = source.replace('    compiled_logits = None', '''    remaining = tokens - len(generated)\n    if len(sequence) >= model.config.context and remaining >= 16:\n        generated.extend(sample_window(model, sequence[-model.config.context:], remaining, temperature, top_k))\n        return prompt + decode(generated)\n    compiled_logits = None''')\nexec(compile(source,__file__,'exec'),module.__dict__)\ncompare_sampling.engine = module\nrecord = dict(source=source_info(),reference=info,device='cpu',method=dict(pairs=10,generated_bytes=200,temperature=0.8,top_k=40,sampling_seed=42,weight_seed=1337,timed_work='complete generation after weight load; alternating fresh models; eager queued windows; shared process'),prototype_source=Path(__file__).read_text(),results=[])\nconfig = PRESETS['tiny'][0]\nfor length in [16,config.context]:\n    prompt = ('After the rain, Mira opened the window. '*20)[:length]\n    compare_sampling.compare(config,'tiny',prompt,args,reference,record)\nprint(json.dumps({str(r['prompt_bytes']):dict(ratio=r['median_ratio'],matches=r['matching_byte_pairs']) for r in record['results']}),flush=True)\n",
+  "results": [
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, ",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.3395638749934733,
+          "bytes_per_second": 588.990804760501,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.308509916998446,
+          "bytes_per_second": 648.2773777447402,
+          "peak_memory_mib": 5.2158355712890625,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.31725087529048324,
+          "bytes_per_second": 630.4159123812495,
+          "peak_memory_mib": 5.215831756591797,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.3133303332142532,
+          "bytes_per_second": 638.303984004132,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.31095362501218915,
+          "bytes_per_second": 643.182725373149,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.31242391699925065,
+          "bytes_per_second": 640.1558559310928,
+          "peak_memory_mib": 5.2158203125,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.3083660420961678,
+          "bytes_per_second": 648.5798456939934,
+          "peak_memory_mib": 5.2158355712890625,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.3136257086880505,
+          "bytes_per_second": 637.7028236512685,
+          "peak_memory_mib": 5.215507507324219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.3075107093900442,
+          "bytes_per_second": 650.3838529614314,
+          "peak_memory_mib": 5.215507507324219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.31068224972113967,
+          "bytes_per_second": 643.7445337785304,
+          "peak_memory_mib": 5.215824127197266,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 6,
+          "path": "updated",
+          "elapsed_seconds": 0.3092775419354439,
+          "bytes_per_second": 646.6683573220664,
+          "peak_memory_mib": 5.215824127197266,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 6,
+          "path": "reference",
+          "elapsed_seconds": 0.31002674996852875,
+          "bytes_per_second": 645.105624015677,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 7,
+          "path": "reference",
+          "elapsed_seconds": 0.3085507922805846,
+          "bytes_per_second": 648.1914971656513,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 7,
+          "path": "updated",
+          "elapsed_seconds": 0.3098040409386158,
+          "bytes_per_second": 645.5693715099984,
+          "peak_memory_mib": 5.2158355712890625,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 8,
+          "path": "updated",
+          "elapsed_seconds": 0.31513054203242064,
+          "bytes_per_second": 634.6576206486009,
+          "peak_memory_mib": 5.2158355712890625,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 8,
+          "path": "reference",
+          "elapsed_seconds": 0.3151561669073999,
+          "bytes_per_second": 634.6060175898908,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 9,
+          "path": "reference",
+          "elapsed_seconds": 0.31443020794540644,
+          "bytes_per_second": 636.0712010047247,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 9,
+          "path": "updated",
+          "elapsed_seconds": 0.3153424998745322,
+          "bytes_per_second": 634.2310347624426,
+          "peak_memory_mib": 5.215831756591797,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 10,
+          "path": "updated",
+          "elapsed_seconds": 0.31153304129838943,
+          "bytes_per_second": 641.9864781162587,
+          "peak_memory_mib": 5.215816497802734,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 10,
+          "path": "reference",
+          "elapsed_seconds": 0.3107110830023885,
+          "bytes_per_second": 643.6847957511145,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.100657892288058,
+        0.9876421394499217,
+        0.99529391987277,
+        1.0170565687328257,
+        0.9897916912409958,
+        1.0024224456402375,
+        0.9959547052574451,
+        1.0000813151109187,
+        0.9971069807289257,
+        0.9973615694419595
+      ],
+      "matching_byte_pairs": 10,
+      "median_ratio": 0.9972342750854426,
+      "aggregate_ratio": 1.008189851828319,
+      "faster_pairs": 4,
+      "median_bytes_per_second": {
+        "reference": 640.7340677732275,
+        "updated": 642.8643040009208
+      }
+    },
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After th",
+      "prompt_bytes": 128,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.6009344160556793,
+          "bytes_per_second": 332.8150205021193,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.5988077092915773,
+          "bytes_per_second": 333.9970359376486,
+          "peak_memory_mib": 5.216243743896484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.6014130827970803,
+          "bytes_per_second": 332.5501318824502,
+          "peak_memory_mib": 5.217121124267578,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.5916272080503404,
+          "bytes_per_second": 338.05071382549124,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.5991991660557687,
+          "bytes_per_second": 333.77883570249423,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.5974755003117025,
+          "bytes_per_second": 334.7417591108927,
+          "peak_memory_mib": 5.216259002685547,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.6000458751805127,
+          "bytes_per_second": 333.30784907042937,
+          "peak_memory_mib": 5.2162628173828125,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.5930761247873306,
+          "bytes_per_second": 337.22483782620213,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.5941893341951072,
+          "bytes_per_second": 336.5930495385302,
+          "peak_memory_mib": 5.215507507324219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.6017538332380354,
+          "bytes_per_second": 332.36182131786455,
+          "peak_memory_mib": 5.2162628173828125,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 6,
+          "path": "updated",
+          "elapsed_seconds": 0.600322041194886,
+          "bytes_per_second": 333.1545175351522,
+          "peak_memory_mib": 5.216545104980469,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 6,
+          "path": "reference",
+          "elapsed_seconds": 0.5961208338849247,
+          "bytes_per_second": 335.50244955640665,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 7,
+          "path": "reference",
+          "elapsed_seconds": 0.6001107920892537,
+          "bytes_per_second": 333.2717935361747,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 7,
+          "path": "updated",
+          "elapsed_seconds": 0.6017854167148471,
+          "bytes_per_second": 332.3443779874263,
+          "peak_memory_mib": 5.216251373291016,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 8,
+          "path": "updated",
+          "elapsed_seconds": 0.6047865003347397,
+          "bytes_per_second": 330.69521209435595,
+          "peak_memory_mib": 5.2162628173828125,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 8,
+          "path": "reference",
+          "elapsed_seconds": 0.5911843748763204,
+          "bytes_per_second": 338.3039344398121,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 9,
+          "path": "reference",
+          "elapsed_seconds": 0.5944754998199642,
+          "bytes_per_second": 336.4310220699922,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 9,
+          "path": "updated",
+          "elapsed_seconds": 0.6169927082955837,
+          "bytes_per_second": 324.1529394285575,
+          "peak_memory_mib": 5.2162628173828125,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 10,
+          "path": "updated",
+          "elapsed_seconds": 0.6322016250342131,
+          "bytes_per_second": 316.35477050407223,
+          "peak_memory_mib": 5.216266632080078,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 10,
+          "path": "reference",
+          "elapsed_seconds": 0.60149483429268,
+          "bytes_per_second": 332.5049337043557,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.003551568777593,
+        0.9837285303119326,
+        1.0028849145164396,
+        0.9883846374394536,
+        0.9874292466036757,
+        0.9930017440279234,
+        0.9972172396022236,
+        0.97750921118297,
+        0.9635049034245114,
+        0.9514288013102288
+      ],
+      "matching_byte_pairs": 10,
+      "median_ratio": 0.9879069420215647,
+      "aggregate_ratio": 0.984613919353274,
+      "faster_pairs": 2,
+      "median_bytes_per_second": {
+        "reference": 335.9660941969164,
+        "updated": 332.4559499343195
+      }
+    }
+  ]
+}

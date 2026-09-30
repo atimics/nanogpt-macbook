@@ -543,3 +543,23 @@ All 18 site checks pass. Browser checks at 240, 320, 390, 640, 768, 1024,
 and 1280 pixels keep all 84 chart points and eight comparison badges inside
 the page. Markers remain separate, value rows fit, and browser error logs are
 clear. The new sampling note fits in the phone and desktop previews.
+
+
+## Queued sliding-window sampling, 30 September 2026
+
+Source `124b2c0` has 351 passing CPU and Metal tests, including 92 sampling
+cases. New checks cover contexts 1/16/64, long Unicode prompts, the queue
+threshold, raw byte output, and final random state. Existing training,
+gradient, checkpoint, and cache checks also pass.
+
+The [window report](../benchmarks/README.md#queued-sliding-window-sampling)
+contains 825 final benchmark pairs and 36 trained-checkpoint pairs. Every
+pair produces matching raw byte IDs. The report includes all timing and
+memory results, the queue sweep, and both CPU experiments. Final benchmark
+processes ran in sequence. Summaries were recomputed from raw data, and
+package and reference-file hashes were checked against Git.
+
+All 18 site checks pass. The updated note and 84 chart points fit at 240,
+320, 390, 640, 768, 1024, and 1280 pixels. All eight percentage badges stay
+visible, markers remain separate, value rows fit, and browser error logs
+are clear. Phone and desktop previews show the measured gains and report link.
