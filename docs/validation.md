@@ -164,3 +164,27 @@ include both the adjacent-step and earlier block comparisons.
 The 300-step story run reached validation loss 2.1712157, matching the previous
 2.1712109 to four decimal places. Its [learning receipt](../benchmarks/learning/demo-2c34805.json)
 contains all reported metrics and the source hash.
+
+## Gradient clipping update, 30 September 2026
+
+Source `17ba7ea` groups float32 gradient reductions on Metal. It preserves the
+global L2 norm, clipping scale, epsilon, and AdamW update. All 124 local tests
+pass. Coverage includes CPU and Metal, eager and compiled calls, scalar and
+empty leaves, strided and broadcast arrays, large reductions, non-finite
+values, and repeated full optimizer updates with gradient accumulation.
+
+The standard benchmark compares `fa60b54` with `17ba7ea`. Median throughput
+rose 1.0% for tiny, 1.9% for small, and 0.3% for medium. Tiny and medium have
+overlapping trial ranges. In 200 adjacent pairs of complete training steps,
+median throughput rose 3.5%, 1.4%, and 2.6%, respectively. The updated path
+was faster in 188, 186, and 193 pairs. This diagnostic uses two live models
+and a 4 GiB memory/cache limit; the time series uses one model and 2 GiB.
+
+Peak active memory changed from 146.9 to 144.2 MiB for tiny, 1011.0 to
+1033.0 MiB for small, and 1907.5 to 2034.9 MiB for medium. This is a speed
+and memory tradeoff for the larger presets. The [protocol and raw receipts](../benchmarks/README.md#gradient-clipping-comparison)
+record both timing methods and the measured memory.
+
+The 300-step story run reached validation loss 2.1712059, matching the prior
+2.1712157 to four decimal places. The [learning receipt](../benchmarks/learning/demo-17ba7ea.json)
+contains the source hash and each reported metric.

@@ -136,3 +136,42 @@ also remains available. Its median changes were +7.5%, -2.4%, and +2.8%; shorter
 pairs reduce the time between each comparison. The story learning check reached
 validation loss 2.1712 after 300 steps. Its [receipt](learning/demo-2c34805.json)
 records the source hash and metrics.
+
+## Gradient clipping comparison
+
+Commit `17ba7ea` groups up to fourteen float32 gradient arrays in each Metal
+reduction. It reduces the kernel launches needed to find the global gradient
+norm. The clipping scale and epsilon match MLX. CPU clipping uses native MLX.
+
+The standard time series includes a fresh baseline at `fa60b54` and the update
+at `17ba7ea`. Both use the usual 20 warmup steps and three 100-step trials:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Median change | Peak memory before / after |
+| --- | ---: | ---: | ---: | ---: |
+| tiny / Metal | 368,281 | 372,007 | +1.0% | 146.9 / 144.2 MiB |
+| small / Metal | 140,803 | 143,437 | +1.9% | 1011.0 / 1033.0 MiB |
+| medium / Metal | 50,981 | 51,129 | +0.3% | 1907.5 / 2034.9 MiB |
+
+Tiny and medium have overlapping trial ranges. Small's ranges are separated.
+Grouping gradients keeps more arrays alive at once: small uses 22.0 MiB more
+peak memory and medium uses 127.5 MiB more. Tiny uses 2.7 MiB less.
+
+The adjacent-step comparison uses the same protocol as the LayerNorm comparison
+above, with two live models and a 4 GiB memory/cache limit:
+
+```bash
+uv run python scripts/compare_clipping.py \
+  --out benchmarks/diagnostics/my-clipping.json
+```
+
+| Preset | Median change | Total-time change | Pairs with a gain |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | +3.5% | +3.7% | 188 / 200 |
+| small / Metal | +1.4% | +1.4% | 186 / 200 |
+| medium / Metal | +2.6% | +2.5% | 193 / 200 |
+
+The [adjacent-step receipt](diagnostics/clipping-17ba7ea-adjacent.json) includes
+every measured step. The [300-step learning receipt](learning/demo-17ba7ea.json)
+records validation loss 2.1712059, matching the prior 2.1712157 to four decimal
+places. The GPU measurements use committed source. The latest CPU timeline
+point retains its own measured source commit.
