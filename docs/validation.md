@@ -125,6 +125,27 @@ percentages remain. A temporary 60-point-per-series layout test also fits at
 keyboard expansion of the results passed. The eight site tests, Ruff, and
 JavaScript syntax check pass.
 
+## Chart label bounds, 29 September 2026
+
+The current 38-point, 11-commit history fits in Chromium and WebKit at widths
+from 280 to 1440 pixels. Rendered glyph checks also cover the chart content.
+
+Two stress cases exposed label failures. With later GPU-only measurements,
+the older CPU series stays near the left of the shared commit axis. Its
+forced first and last labels overlap. A single measurement near the right
+edge skips fitting and clips both its value and commit hash.
+
+Label fitting now reserves space for the latest value and hash. It moves
+labels inside the SVG bounds and hides labels that collide. Every point keeps
+its global commit position and link. Long comparison percentages wrap within
+the card. Both percentage comparisons stay visible.
+
+Chromium and WebKit checks cover the current data, sparse and single-point
+histories, long percentages, repeated width changes, keyboard focus, the
+expanded result cards, CPU filtering, and memory selection. Four regression
+tests use Node's built-in test runner; the Pages build runs them. The eight
+Python site tests, Ruff, JavaScript syntax check, and site build pass.
+
 ## LayerNorm gradient update, 30 September 2026
 
 Source `b3380d8` reduces weight and bias gradient buffers before writing them

@@ -2,22 +2,30 @@ const metricButtons = document.querySelectorAll('[data-metric]');
 const deviceButtons = document.querySelectorAll('button[data-device]');
 function fitTimelineLabels(plot) {
   const points = [...plot.querySelectorAll('svg a')];
-  if (points.length < 2) return;
+  if (!points.length) return;
   const width = plot.clientWidth;
   const last = points[points.length - 1];
-  // Read the rendered labels so browser zoom and font changes also fit.
-  const bounds = point => {
+  // Keep the shared commit positions. Labels can move a few pixels at an edge.
+  const bounds = points.map((point, index) => {
     const position = Number(point.dataset.position) * width / 100;
-    const labelWidth = Math.max(...[...point.querySelectorAll('text')].map(text => text.getBBox().width));
-    const start = point === points[0] ? position : point === last ? position - labelWidth : position - labelWidth / 2;
-    return {start, end: start + labelWidth};
-  };
-  const lastBounds = bounds(last);
+    const texts = [...point.querySelectorAll('text')];
+    const labelWidth = Math.max(...texts.map(text => text.getBBox().width));
+    const anchor = index === 0 ? 'start' : point === last ? 'end' : 'middle';
+    const offset = anchor === 'start' ? 0 : anchor === 'end' ? labelWidth : labelWidth / 2;
+    const start = Math.max(2, Math.min(position - offset, width - labelWidth - 2));
+    texts.forEach(text => {
+      text.setAttribute('x', String(start + offset));
+      text.setAttribute('text-anchor', anchor);
+    });
+    return {start, end: start + labelWidth, fits: labelWidth + 4 <= width};
+  });
+  const lastBounds = bounds[bounds.length - 1];
   let previousEnd = -Infinity;
   points.forEach((point, index) => {
-    const {start, end} = bounds(point);
-    const show = index === 0 || point === last ||
-      (start - previousEnd >= 12 && lastBounds.start - end >= 12);
+    const {start, end, fits} = bounds[index];
+    // Reserve the latest label first, including when a sparse series ends early.
+    const show = fits && (point === last ||
+      (start - previousEnd >= 12 && lastBounds.start - end >= 12));
     point.dataset.label = String(show);
     if (show) previousEnd = end;
   });
