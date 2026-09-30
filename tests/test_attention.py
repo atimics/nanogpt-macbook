@@ -1,11 +1,18 @@
+from functools import partial
+
 import mlx.core as mx
+import mlx.nn as nn
+import mlx.optimizers as optim
 import numpy as np
 import pytest
+from mlx.utils import tree_flatten
 
-from nanogpt_macbook import checkpoint
+from nanogpt_macbook import attention, checkpoint
+from nanogpt_macbook import model as model_module
 from nanogpt_macbook.attention import training_attention
 from nanogpt_macbook.config import ModelConfig, TrainConfig
-from nanogpt_macbook.engine import train
+from nanogpt_macbook.engine import make_train_step, train
+from nanogpt_macbook.model import GPT, loss_fn
 
 
 def use_device(device):
@@ -19,22 +26,33 @@ def reference(q, k, v):
 
 
 @pytest.mark.parametrize("device", ["cpu", "gpu"])
+@pytest.mark.parametrize("compiled", [False, True])
 @pytest.mark.parametrize(
-    "length,width", [(1, 8), (5, 8), (33, 16), (128, 32), (256, 32), (512, 48), (513, 16)]
+    "length,width",
+    [(1, 8), (5, 8), (33, 16), (128, 32), (256, 32), (288, 40), (480, 64), (512, 48), (513, 16)],
 )
-def test_attention_values_and_gradients_match_mlx(device, length, width):
+def test_attention_values_and_gradients_match_mlx(device, compiled, length, width):
     use_device(device)
     # Slices also cover strided input arrays and rows beyond a 32-lane boundary.
     packed = mx.random.normal((1, 2, length + 1, 3 * width))
     inputs = [part[:, :, :length] for part in mx.split(packed, 3, axis=-1)]
-    weights = mx.random.normal((1, 2, length, width))
-    actual = training_attention(*inputs)
+    weights = mx.random.normal((1, 2, length, 2 * width))[..., ::2]
+
+    def forward(q, k, v):
+        return training_attention(q, k, v)
+
+    if compiled:
+        forward = mx.compile(forward)
+    actual = forward(*inputs)
     expected = reference(*inputs)
     np.testing.assert_allclose(np.array(actual), np.array(expected), atol=3e-6, rtol=3e-5)
 
-    actual_grads = mx.grad(
+    actual_grad_fn = mx.grad(
         lambda q, k, v: mx.sum(training_attention(q, k, v) * weights), argnums=(0, 1, 2)
-    )(*inputs)
+    )
+    if compiled:
+        actual_grad_fn = mx.compile(actual_grad_fn)
+    actual_grads = actual_grad_fn(*inputs)
     expected_grads = mx.grad(
         lambda q, k, v: mx.sum(reference(q, k, v) * weights), argnums=(0, 1, 2)
     )(*inputs)
@@ -44,36 +62,131 @@ def test_attention_values_and_gradients_match_mlx(device, length, width):
         )
 
 
-def test_metal_attention_respects_the_causal_boundary():
+@pytest.mark.parametrize("length,width", [(33, 16), (256, 32), (512, 48)])
+def test_metal_attention_respects_the_causal_boundary(length, width):
     use_device("gpu")
-    q, k, v = [mx.random.normal((1, 2, 33, 16)) for _ in range(3)]
-    changed_k = mx.concatenate([k[:, :, :17], k[:, :, 17:] * 20], axis=2)
-    changed_v = mx.concatenate([v[:, :, :17], v[:, :, 17:] + 20], axis=2)
+    boundary = length // 2 + 1
+    q, k, v = [mx.random.normal((1, 2, length, width)) for _ in range(3)]
+    changed_k = mx.concatenate([k[:, :, :boundary], k[:, :, boundary:] * 20], axis=2)
+    changed_v = mx.concatenate([v[:, :, :boundary], v[:, :, boundary:] + 20], axis=2)
     np.testing.assert_allclose(
-        np.array(training_attention(q, k, v)[:, :, :17]),
-        np.array(training_attention(q, changed_k, changed_v)[:, :, :17]),
+        np.array(training_attention(q, k, v)[:, :, :boundary]),
+        np.array(training_attention(q, changed_k, changed_v)[:, :, :boundary]),
         atol=1e-7,
     )
     grads = mx.grad(
-        lambda keys, values: training_attention(q, keys, values)[:, :, :17].sum(),
+        lambda keys, values: training_attention(q, keys, values)[:, :, :boundary].sum(),
         argnums=(0, 1),
     )(k, v)
     for grad in grads:
-        np.testing.assert_array_equal(np.array(grad[:, :, 17:]), 0)
+        np.testing.assert_array_equal(np.array(grad[:, :, boundary:]), 0)
 
 
-def test_metal_softmax_is_stable_for_large_scores():
+@pytest.mark.parametrize("length,width", [(33, 16), (256, 32), (512, 48)])
+def test_metal_softmax_is_stable_for_large_scores(length, width):
     use_device("gpu")
-    q = mx.full((1, 1, 33, 16), 100.0)
-    k = mx.full((1, 1, 33, 16), 100.0)
-    v = mx.random.normal((1, 1, 33, 16))
-    expected = mx.cumsum(v, axis=2) / mx.arange(1, 34)[None, None, :, None]
+    q = mx.full((1, 1, length, width), 100.0)
+    k = mx.full((1, 1, length, width), 100.0)
+    v = mx.random.normal((1, 1, length, width))
+    expected = mx.cumsum(v, axis=2) / mx.arange(1, length + 1)[None, None, :, None]
     np.testing.assert_allclose(np.array(training_attention(q, k, v)), np.array(expected), atol=1e-6)
 
 
-def test_metal_training_resume_with_accumulation(corpus, tmp_path):
+@pytest.mark.parametrize("length,width", [(256, 32), (512, 48)])
+@pytest.mark.parametrize("uniform", [False, True])
+def test_blocked_gradients_match_float64_reference(length, width, uniform):
     use_device("gpu")
-    model = ModelConfig(context=16, layers=1, heads=2, width=16)
+    rng = np.random.default_rng(12)
+    arrays = [rng.normal(size=(2, 2, length, width)).astype(np.float32) for _ in range(4)]
+    if uniform:
+        arrays[0].fill(1)
+        arrays[1].fill(1)
+    q, k, v, weight = (array.astype(np.float64) for array in arrays)
+    scores = q @ k.swapaxes(-1, -2) / np.sqrt(width)
+    scores = np.where(np.tri(length, dtype=bool), scores, -np.inf)
+    probs = np.exp(scores - scores.max(axis=-1, keepdims=True))
+    probs /= probs.sum(axis=-1, keepdims=True)
+    grad_probs = weight @ v.swapaxes(-1, -2)
+    grad_scores = probs * (grad_probs - (probs * grad_probs).sum(axis=-1, keepdims=True))
+    grad_scores /= np.sqrt(width)
+    expected = (
+        grad_scores @ k,
+        grad_scores.swapaxes(-1, -2) @ q,
+        probs.swapaxes(-1, -2) @ weight,
+    )
+    cotangent = mx.array(arrays[3])
+    actual = mx.compile(
+        mx.grad(lambda q, k, v: (training_attention(q, k, v) * cotangent).sum(), argnums=(0, 1, 2))
+    )(*(mx.array(array) for array in arrays[:3]))
+    for a, e in zip(actual, expected, strict=True):
+        np.testing.assert_allclose(np.array(a), e, atol=5e-6, rtol=5e-5)
+
+
+@pytest.mark.parametrize("length,width", [(256, 64), (512, 96)])
+def test_compiled_model_gradients_and_updates_match_mlx(length, width, monkeypatch):
+    use_device("gpu")
+    config = ModelConfig(context=length, layers=2, heads=2, width=width)
+    tokens = mx.random.randint(0, 256, (2, length + 1))
+    records = []
+    for implementation in (training_attention, reference):
+        monkeypatch.setattr(model_module, "training_attention", implementation)
+        mx.random.seed(19)
+        model = GPT(config)
+        optimizer = optim.AdamW(learning_rate=1e-4)
+        optimizer.init(model.trainable_parameters())
+        mx.eval(model.parameters(), optimizer.state)
+        grad_fn = nn.value_and_grad(model, partial(loss_fn, model))
+        value, gradients = mx.compile(grad_fn, inputs=model.state, outputs=model.state)(
+            tokens[:, :-1], tokens[:, 1:]
+        )
+        mx.eval(value, gradients)
+        step = make_train_step(model, optimizer, accumulation=2, grad_clip=1.0)
+        x = mx.stack([tokens[:, :-1], tokens[:, 1:]])
+        y = mx.stack([tokens[:, 1:], tokens[:, :-1]])
+        for _ in range(3):
+            step(x, y, 1e-4)
+        records.append((value, gradients, model.parameters(), optimizer.state))
+    for (actual_key, actual), (expected_key, expected) in zip(
+        tree_flatten(records[0]), tree_flatten(records[1]), strict=True
+    ):
+        assert actual_key == expected_key
+        np.testing.assert_allclose(np.array(actual), np.array(expected), atol=2e-6, rtol=2e-5)
+
+
+@pytest.mark.parametrize(
+    "length,width,value_width,dtype",
+    [
+        (128, 32, 32, mx.float32),
+        (257, 32, 32, mx.float32),
+        (256, 33, 33, mx.float32),
+        (256, 72, 72, mx.float32),
+        (256, 32, 16, mx.float32),
+        (256, 32, 32, mx.float16),
+    ],
+)
+def test_other_shapes_keep_the_general_attention_path(
+    length, width, value_width, dtype, monkeypatch
+):
+    use_device("gpu")
+
+    def unexpected_kernel(_block_size):
+        raise AssertionError("This shape uses the general attention path")
+
+    monkeypatch.setattr(attention, "_blocked_attention", unexpected_kernel)
+    q, k = [mx.random.normal((1, 2, length, width)).astype(dtype) for _ in range(2)]
+    v = mx.random.normal((1, 2, length, value_width)).astype(dtype)
+    np.testing.assert_allclose(
+        np.array(training_attention(q, k, v)),
+        np.array(reference(q, k, v)),
+        atol=3e-6,
+        rtol=3e-5,
+    )
+
+
+@pytest.mark.parametrize("context,width", [(16, 16), (256, 64)])
+def test_metal_training_resume_with_accumulation(corpus, tmp_path, context, width):
+    use_device("gpu")
+    model = ModelConfig(context=context, layers=1, heads=2, width=width)
     config = TrainConfig(batch_size=2, accumulation=2, warmup_steps=2, decay_steps=20)
 
     def run(name, steps, resume=False):

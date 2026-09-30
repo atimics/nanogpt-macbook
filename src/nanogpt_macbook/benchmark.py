@@ -110,7 +110,10 @@ def benchmark(
             "seed": seed,
             "memory_limit_gib": memory_gb if selected == "gpu" else None,
             "cache_limit_gib": memory_gb if selected == "gpu" else None,
-            "attention": "fused causal softmax on Metal; MLX attention on CPU",
+            "attention": (
+                "fused causal softmax on Metal; masked blocks and fused score gradient "
+                "for aligned contexts 256-512 and head widths 32-64; MLX attention on CPU"
+            ),
             "activation": "explicit stable GELU derivative on Metal; MLX derivative on CPU",
             "normalization": "saved float32 LayerNorm statistics on Metal; native MLX on CPU",
             "clipping": "grouped float32 global norm on Metal; MLX clipping on CPU",
