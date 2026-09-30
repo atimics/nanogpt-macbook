@@ -148,7 +148,7 @@ def benchmark(
             "memory_limit_gib": memory_gb if selected == "gpu" else None,
             "cache_limit_gib": memory_gb if selected == "gpu" else None,
             "attention": (
-                "fused causal softmax on Metal; masked blocks and fused score gradient "
+                "fused causal softmax on Metal; fused score/softmax and score gradient "
                 "for aligned contexts 256-512 and head widths 32-64; MLX attention on CPU"
             ),
             "activation": "explicit stable GELU derivative on Metal; MLX derivative on CPU",

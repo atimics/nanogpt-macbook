@@ -92,6 +92,23 @@ def test_metal_softmax_is_stable_for_large_scores(length, width):
     np.testing.assert_allclose(np.array(training_attention(q, k, v)), np.array(expected), atol=1e-6)
 
 
+@pytest.mark.parametrize("length,width", [(256, 32), (288, 40), (480, 64), (512, 48)])
+@pytest.mark.parametrize("scale", [0, 1, 5])
+def test_fused_probabilities_match_float64_and_keep_future_tokens_zero(length, width, scale):
+    use_device("gpu")
+    rng = np.random.default_rng(93)
+    q, k = [(rng.normal(size=(2, 3, length, width)) * scale).astype(np.float32) for _ in range(2)]
+    scores = q.astype(np.float64) @ k.astype(np.float64).swapaxes(-1, -2) / np.sqrt(width)
+    causal = np.tri(length, dtype=bool)
+    scores = np.where(causal, scores, -np.inf)
+    expected = np.exp(scores - scores.max(axis=-1, keepdims=True))
+    expected /= expected.sum(axis=-1, keepdims=True)
+    actual = np.array(attention._score_softmax(mx.array(q), mx.array(k)))
+    np.testing.assert_allclose(actual, expected, atol=5e-6, rtol=5e-5)
+    np.testing.assert_allclose(actual.sum(axis=-1), 1, atol=3e-7)
+    np.testing.assert_array_equal(actual[..., ~causal], 0)
+
+
 @pytest.mark.parametrize("length,width", [(256, 32), (512, 48)])
 @pytest.mark.parametrize("uniform", [False, True])
 def test_blocked_gradients_match_float64_reference(length, width, uniform):

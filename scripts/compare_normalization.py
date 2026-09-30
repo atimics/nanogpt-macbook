@@ -5,7 +5,6 @@ import gc
 import hashlib
 import statistics
 import subprocess
-import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,15 +18,15 @@ import numpy as np
 
 from nanogpt_macbook import engine
 from nanogpt_macbook import model as model_module
-from nanogpt_macbook.benchmark import _step, source_info
+from nanogpt_macbook.benchmark import _batches, _timed_steps, source_info
 from nanogpt_macbook.checkpoint import write_json
 from nanogpt_macbook.config import PRESETS
-from nanogpt_macbook.engine import make_train_step, select_device
+from nanogpt_macbook.engine import make_train_step, run_steps, select_device
 from nanogpt_macbook.model import GPT
 from nanogpt_macbook.normalization import LayerNorm
 
 
-def compare(preset, pairs, steps, warmup, component="normalization", reference=None):
+def compare(preset, pairs, steps, warmup, component="normalization", reference=None, queued=False):
     config, training = PRESETS[preset]
     records = []
     if component == "clipping":
@@ -57,8 +56,10 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
                 model, optimizer, training.accumulation, training.grad_clip
             )
             # Compile each path while its implementation is selected.
-            for _ in range(warmup):
-                _step(train_step, rng, config, training)
+            for _ in run_steps(
+                train_step, _batches(rng, config, training, warmup), pipeline=queued
+            ):
+                pass
             mx.synchronize()
             records.append((name, train_step, rng))
 
@@ -68,12 +69,7 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
         order = records if pair % 2 == 0 else list(reversed(records))
         rates = {}
         for name, train_step, rng in order:
-            timings = []
-            for _ in range(steps):
-                start = time.perf_counter()
-                _step(train_step, rng, config, training)
-                mx.synchronize()
-                timings.append(time.perf_counter() - start)
+            timings = _timed_steps(train_step, rng, config, training, steps, queued)
             rates[name] = training.batch_size * config.context * steps / sum(timings)
             samples.append(
                 {
@@ -112,6 +108,7 @@ def main(component="normalization"):
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--baseline-ref", help=f"Use {component} from this trusted local Git ref")
+    parser.add_argument("--queued", action="store_true", help="Use the two-step GPU queue")
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
@@ -173,11 +170,20 @@ def main(component="normalization"):
             order="reference then updated on odd pairs; updated then reference on even pairs",
             summary="median of updated/reference throughput ratios across adjacent pairs",
         )
+    if args.queued:
+        receipt["method"].update(
+            name=receipt["method"]["name"].replace("-v1", "-queued-v1"),
+            queue_depth=2,
+            timing_semantics=(
+                "Checked loss-completion intervals, including all GPU work "
+                "through the final device wait in each block"
+            ),
+        )
     for preset in PRESETS if args.preset == "all" else [args.preset]:
         gc.collect()
         mx.clear_cache()
         receipt["results"].append(
-            compare(preset, args.pairs, args.steps, args.warmup, component, reference)
+            compare(preset, args.pairs, args.steps, args.warmup, component, reference, args.queued)
         )
         write_json(args.out, receipt)
     print(f"Saved comparison to {args.out}")
