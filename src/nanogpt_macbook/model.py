@@ -31,18 +31,29 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(config.width, config.width * 3, bias=False)
         self.proj = nn.Linear(config.width, config.width, bias=False)
 
-    def __call__(self, x, residual=None):
+    def __call__(self, x, residual=None, *, last_token_only=False):
         batch, length, width = x.shape
         q, k, v = mx.split(self.qkv(x), 3, axis=-1)
         q, k, v = [
             item.reshape(batch, length, self.heads, width // self.heads).transpose(0, 2, 1, 3)
             for item in (q, k, v)
         ]
-        if self.training:
+        if last_token_only:
+            # The final query attends to the whole prefix. Its output is the
+            # only row needed for the last block's projection and MLP.
+            q = q[:, :, -1:, :]
+            length = 1
+            if residual is not None:
+                residual = residual[:, -1:, :]
+        if self.training and not last_token_only:
             attended = training_attention(q, k, v)
         else:
             attended = mx.fast.scaled_dot_product_attention(
-                q, k, v, scale=(width // self.heads) ** -0.5, mask="causal"
+                q,
+                k,
+                v,
+                scale=(width // self.heads) ** -0.5,
+                mask=None if last_token_only else "causal",
             )
         hidden = attended.transpose(0, 2, 1, 3).reshape(batch, length, width)
         if residual is None:
@@ -59,8 +70,11 @@ class Block(nn.Module):
         self.up = nn.Linear(config.width, 4 * config.width, bias=False)
         self.down = nn.Linear(4 * config.width, config.width, bias=False)
 
-    def __call__(self, x):
-        x = self.attention(self.attention_norm(x), x)
+    def __call__(self, x, *, last_token_only=False):
+        if last_token_only:
+            x = self.attention(self.attention_norm(x), x, last_token_only=True)
+        else:
+            x = self.attention(self.attention_norm(x), x)
         hidden = gelu_approx(self.up(self.mlp_norm(x)))
         return _residual_projection(x, hidden, self.down)
 
@@ -80,12 +94,15 @@ class GPT(nn.Module):
                     scale /= math.sqrt(2 * config.layers)
                 module.weight = mx.random.normal(module.weight.shape) * scale
 
-    def __call__(self, tokens):
+    def __call__(self, tokens, *, last_token_only=False):
         if tokens.ndim != 2 or not 0 < tokens.shape[1] <= self.config.context:
             raise ValueError(f"Use a batch with 1 to {self.config.context} tokens per sequence")
         x = self.tokens(tokens) + self.positions(mx.arange(tokens.shape[1]))
-        for block in self.blocks:
-            x = block(x)
+        for index, block in enumerate(self.blocks):
+            if last_token_only and index == len(self.blocks) - 1:
+                x = block(x, last_token_only=True)
+            else:
+                x = block(x)
         return self.tokens.as_linear(self.norm(x))
 
     @property
