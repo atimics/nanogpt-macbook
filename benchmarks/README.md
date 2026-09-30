@@ -175,3 +175,47 @@ every measured step. The [300-step learning receipt](learning/demo-17ba7ea.json)
 records validation loss 2.1712059, matching the prior 2.1712157 to four decimal
 places. The GPU measurements use committed source. The latest CPU timeline
 point retains its own measured source commit.
+
+## Saved LayerNorm statistics
+
+Commit `231140f` saves the row statistics from LayerNorm's forward pass and
+reuses them for gradients. It combines sixteen rows per backward group for
+widths up to 256 and eight rows for wider supported inputs. This reduces
+partial gradient buffers. Each row is shifted by its first value before the
+mean is calculated, which preserves small differences in nearly constant rows.
+CPU normalization and the checkpoint layout keep their existing behavior.
+
+The standard time series includes the baseline at `63a55cb` and this update:
+
+| Preset | Baseline bytes/s | Updated bytes/s | Peak memory before / after |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | 354,993 | 375,699 | 144.2 / 142.6 MiB |
+| small / Metal | 74,453 | 139,522 | 1033.0 / 1022.9 MiB |
+| medium / Metal | 27,717 | 50,361 | 2034.9 / 2022.7 MiB |
+
+Machine timing varied sharply between these sequential runs. The adjacent-step
+comparison gives a closer estimate of this code change. It loads LayerNorm
+from the trusted local baseline commit and keeps all other training code fixed:
+
+```bash
+uv run python scripts/compare_normalization.py --baseline-ref 63a55cb \
+  --out benchmarks/diagnostics/my-saved-normalization.json
+```
+
+The receipt includes the full baseline commit and the hash of the loaded file.
+Both paths get 20 warmup steps, followed by 200 pairs of complete training
+steps. Their order alternates each pair. The comparison keeps two models alive
+and uses a 4 GiB memory/cache limit; the standard protocol uses one model and
+2 GiB. Settings, batches, seeds, optimizer, and float32 precision match.
+
+| Preset | Median change | Total-time change | Pairs with a gain |
+| --- | ---: | ---: | ---: |
+| tiny / Metal | +4.2% | +3.7% | 126 / 200 |
+| small / Metal | +0.6% | +0.6% | 124 / 200 |
+| medium / Metal | +1.0% | +1.2% | 168 / 200 |
+
+The [paired receipt](diagnostics/normalization-231140f-adjacent.json) records
+every step. These gains are modest, especially for small. Standard peak
+memory fell by 1.6 MiB for tiny, 10.2 MiB for small, and 12.2 MiB for medium.
+The [learning check](learning/demo-231140f.json) reached validation loss
+2.1712095 after 300 steps, matching the prior 2.1712059 to four decimal places.

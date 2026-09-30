@@ -209,3 +209,30 @@ record both timing methods and the measured memory.
 The 300-step story run reached validation loss 2.1712059, matching the prior
 2.1712157 to four decimal places. The [learning receipt](../benchmarks/learning/demo-17ba7ea.json)
 contains the source hash and each reported metric.
+
+## Saved LayerNorm statistics, 30 September 2026
+
+Source `231140f` groups the forward pass and reuses each row's statistics for
+gradients. Larger backward groups also reduce partial gradient buffers. The
+row origin and shifted mean are stored separately to retain accuracy when
+input values are nearly equal.
+
+All 130 local tests pass. The added output checks compare individual values
+with float64 calculations for strided, constant, and nearly constant rows,
+in eager and compiled calls. Existing tests cover all gradients, finite
+differences, complete model gradients, optimizer updates, accumulation, and
+checkpoint resume. Ruff and formatting pass.
+
+In 200 adjacent pairs against the prior LayerNorm at `63a55cb`, median
+throughput rose 4.2% for tiny, 0.6% for small, and 1.0% for medium. The updated
+path was faster in 126, 124, and 168 pairs, respectively. Peak active memory
+fell from 144.2 to 142.6 MiB, 1033.0 to 1022.9 MiB, and 2034.9 to 2022.7 MiB.
+
+The standard sequential runs show larger timing differences. The published
+time series retains those measured values and ranges. Use the [paired protocol
+and receipts](../benchmarks/README.md#saved-layernorm-statistics) to assess this
+code change; they include the previous source commit and its file hash.
+
+The 300-step story run reached validation loss 2.1712095, matching the prior
+2.1712059 to four decimal places. Its [learning receipt](../benchmarks/learning/demo-231140f.json)
+contains the source hash and all reported metrics.

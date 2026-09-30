@@ -1,4 +1,4 @@
-"""LayerNorm with grouped float32 gradient reduction on Metal."""
+"""LayerNorm with saved row statistics and grouped gradients on Metal."""
 
 from functools import lru_cache
 
@@ -7,35 +7,71 @@ import mlx.nn as nn
 
 
 @lru_cache(maxsize=1)
+def _forward_kernel():
+    return mx.fast.metal_kernel(
+        name="nanogpt_layer_norm_forward",
+        input_names=["x", "weight", "bias", "epsilon"],
+        output_names=["out", "stats"],
+        source="""
+            uint row = thread_position_in_grid.x / 32;
+            uint lane = thread_index_in_simdgroup;
+            if (row >= N) return;
+            // Shift before summing to preserve small differences in nearly
+            // constant rows. Save the origin and shifted mean separately.
+            float origin = x[row * D];
+            float values[C], mean = 0;
+            for (uint i = 0; i < C; ++i) {
+                uint col = lane + i * 32;
+                values[i] = col < D ? x[row * D + col] - origin : 0;
+                mean += values[i];
+            }
+            mean = simd_sum(mean) / D;
+            float variance = 0;
+            for (uint i = 0; i < C; ++i) {
+                uint col = lane + i * 32;
+                values[i] = col < D ? values[i] - mean : 0;
+                variance += values[i] * values[i];
+            }
+            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);
+            if (lane == 0) {
+                stats[row * 3] = origin;
+                stats[row * 3 + 1] = mean;
+                stats[row * 3 + 2] = inv;
+            }
+            for (uint i = 0; i < C; ++i) {
+                uint col = lane + i * 32;
+                if (col < D) {
+                    out[row * D + col] = values[i] * inv * weight[col] + bias[col];
+                }
+            }
+        """,
+    )
+
+
+@lru_cache(maxsize=1)
 def _backward_kernel():
     return mx.fast.metal_kernel(
-        name="nanogpt_layer_norm_vjp",
-        input_names=["x", "weight", "grad", "epsilon"],
+        name="nanogpt_layer_norm_saved_vjp",
+        input_names=["x", "weight", "grad", "stats"],
         output_names=["dx", "dw", "db"],
         source="""
             uint group = threadgroup_position_in_grid.x;
             uint simd = simdgroup_index_in_threadgroup;
             uint lane = thread_index_in_simdgroup;
             uint row = group * R + simd;
+            float origin = row < N ? stats[row * 3] : 0;
+            float mean = row < N ? stats[row * 3 + 1] : 0;
+            float inv = row < N ? stats[row * 3 + 2] : 0;
             float values[C], gradients[C], weights[C];
-            float mean = 0;
+            float sum_g = 0, sum_gx = 0;
             for (uint i = 0; i < C; ++i) {
                 uint col = lane + i * 32;
-                values[i] = (row < N && col < D) ? x[row * D + col] : 0;
+                values[i] = (row < N && col < D) ? (x[row * D + col] - origin) - mean : 0;
                 gradients[i] = (row < N && col < D) ? grad[row * D + col] : 0;
                 weights[i] = col < D ? weight[col] : 0;
-                mean += values[i];
-            }
-            mean = simd_sum(mean) / D;
-            float variance = 0, sum_g = 0, sum_gx = 0;
-            for (uint i = 0; i < C; ++i) {
-                uint col = lane + i * 32;
-                values[i] = col < D ? values[i] - mean : 0;
-                variance += values[i] * values[i];
                 sum_g += gradients[i] * weights[i];
                 sum_gx += gradients[i] * weights[i] * values[i];
             }
-            float inv = metal::precise::rsqrt(simd_sum(variance) / D + epsilon);
             sum_g = simd_sum(sum_g) / D;
             sum_gx = simd_sum(sum_gx) / D * inv * inv;
             threadgroup float partial_w[R * D];
@@ -67,23 +103,35 @@ def _backward_kernel():
 
 @lru_cache(maxsize=32)
 def _normalize(eps):
+    forward = _forward_kernel()
     backward = _backward_kernel()
 
     @mx.custom_function
     def apply(x, weight, bias):
-        return mx.fast.layer_norm(x, weight, bias, eps)
+        width = x.shape[-1]
+        count = x.size // width
+        return tuple(
+            forward(
+                inputs=[x, weight, bias, mx.array(eps)],
+                template=[("N", count), ("D", width), ("C", (width + 31) // 32)],
+                output_shapes=[x.shape, (count, 3)],
+                output_dtypes=[mx.float32] * 2,
+                grid=(((count + 3) // 4) * 128, 1, 1),
+                threadgroup=(128, 1, 1),
+            )
+        )
 
     @apply.vjp
-    def vjp(primals, cotangent, _output):
+    def vjp(primals, cotangent, output):
         x, weight, _bias = primals
         width = x.shape[-1]
         count = x.size // width
-        # Four rows share a threadgroup. Reduce their weight and bias gradients
-        # before writing partial sums to device memory.
-        rows = 4
+        # Keep the two shared partial buffers within 32 KiB. More rows per
+        # group reduce the weight and bias gradients written to device memory.
+        rows = 16 if width <= 256 else 8
         groups = (count + rows - 1) // rows
         dx, dw, db = backward(
-            inputs=[x, weight, cotangent, mx.array(eps)],
+            inputs=[x, weight, cotangent[0], output[1]],
             template=[("N", count), ("D", width), ("C", (width + 31) // 32), ("R", rows)],
             output_shapes=[x.shape, (groups, width), (groups, width)],
             output_dtypes=[mx.float32] * 3,
@@ -92,11 +140,12 @@ def _normalize(eps):
         )
         return dx, mx.sum(dw, axis=0), mx.sum(db, axis=0)
 
-    return apply
+    # Row statistics are private outputs used only by the backward pass.
+    return lambda x, weight, bias: apply(x, weight, bias)[0]
 
 
 class LayerNorm(nn.LayerNorm):
-    """Keep MLX's forward and checkpoint layout, with grouped Metal gradients."""
+    """Normalize float32 rows on Metal while keeping MLX's checkpoint layout."""
 
     def __call__(self, x):
         weight, bias = self.get("weight"), self.get("bias")
