@@ -383,6 +383,9 @@ a 2 GiB memory/cache limit, 20 warmup steps, and three 100-step trials:
 | small / Metal | 156,853 | 166,338 | 999.3 / 1546.4 MiB |
 | medium / Metal | 58,454 | 60,012 | 1884.2 / 1947.2 MiB |
 
+The current tiny CPU control records 24,386 bytes/s with per-step waits. CPU
+math uses the same path; its speed also reflects the conditions of this run.
+
 Tiny and small have separated trial ranges. Medium ranges overlap, with more
 variation in its queued run. The queue keeps more arrays active at once.
 Peak active memory rises by 125.4 MiB for tiny, 547.1 MiB for small, and
