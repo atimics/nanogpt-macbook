@@ -9,6 +9,7 @@ from mlx.utils import tree_flatten
 from .activations import gelu_approx
 from .attention import training_attention
 from .config import ModelConfig
+from .normalization import LayerNorm
 
 
 class Attention(nn.Module):
@@ -37,9 +38,9 @@ class Attention(nn.Module):
 class Block(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.attention_norm = nn.LayerNorm(config.width)
+        self.attention_norm = LayerNorm(config.width)
         self.attention = Attention(config)
-        self.mlp_norm = nn.LayerNorm(config.width)
+        self.mlp_norm = LayerNorm(config.width)
         self.up = nn.Linear(config.width, 4 * config.width, bias=False)
         self.down = nn.Linear(4 * config.width, config.width, bias=False)
 
@@ -55,7 +56,7 @@ class GPT(nn.Module):
         self.tokens = nn.Embedding(config.vocab_size, config.width)
         self.positions = nn.Embedding(config.context, config.width)
         self.blocks = [Block(config) for _ in range(config.layers)]
-        self.norm = nn.LayerNorm(config.width)
+        self.norm = LayerNorm(config.width)
         for name, module in self.named_modules():
             if isinstance(module, (nn.Linear, nn.Embedding)):
                 scale = 0.02

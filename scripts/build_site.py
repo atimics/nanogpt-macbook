@@ -359,7 +359,9 @@ def build(output: Path, root: Path = ROOT):
         "HIGHLIGHTS": highlights,
         "TIMELINE_CARDS": timeline_cards(rows, commits),
         "COMMIT_COUNT": str(len(commits)),
-        "LATEST_COMMIT": commits[-1][:7],
+        "LATEST_COMMIT": " · ".join(
+            dict.fromkeys(row["source"]["commit"][:7] for row in current_rows)
+        ),
         "SPEED_BARS": bars(current_rows),
         "MEMORY_BARS": bars(current_rows, memory=True),
         "TABLE_ROWS": table(rows),
