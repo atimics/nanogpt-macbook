@@ -22,3 +22,17 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest
       - run: uv run python -m build
+  test-metal:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.3"
+      - run: uv sync --frozen --python 3.12
+      - name: Check real Metal access
+        run: |
+          uv run python scripts/ci_benchmark.py probe --out "$RUNNER_TEMP/metal-probe"
+          uv run python -c 'import mlx.core as mx; assert mx.metal.is_available(), "Metal GPU access is required"'
+      - run: uv run pytest

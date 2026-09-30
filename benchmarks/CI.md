@@ -5,6 +5,10 @@ to measure speed away from a busy development Mac. Run **probe** first. Its
 `host.json` records Metal access, a small GPU calculation, the runner image,
 the chip, and the Python, MLX, and NumPy versions.
 
+The regular CI workflow also runs the test suite on `macos-26` for every push
+and pull request. It requires Metal access, so GPU tests run alongside the CPU
+tests. The separate Linux job checks portability, lint, formatting, and packaging.
+
 The workflow offers two hosts:
 
 - `macos-26`: the standard Mac runner, free for this public repository. Our
