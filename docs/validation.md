@@ -523,3 +523,23 @@ ratios, and byte-match counts were checked independently before publication.
 All 18 site checks pass. The sampling note and existing 84-point history fit
 in browser checks from 240 to 1280 pixels. Both percentage comparisons remain
 visible, and markers keep their spacing.
+
+
+## Cached prefix sampling, 30 September 2026
+
+Source `c740bb8` has 327 passing CPU and Metal tests, including 68 sampling
+cases. New checks compare cached logits with rebuilt contexts, mask large
+future-slot values, preserve random state and raw bytes, and cover short
+outputs, context transitions, and updated weights. CI also passes on Linux.
+
+The [cache report](../benchmarks/README.md#cached-prefix-sampling) records
+635 final benchmark pairs and 36 trained-checkpoint pairs. Every pair
+produces matching raw byte IDs. Final timings ran in sequence. The report
+preserves the five prototypes and two early overlapping runs with their
+scope notes. Published summaries were recomputed from raw durations and
+byte hashes; package and reference-file hashes were checked against Git.
+
+All 18 site checks pass. Browser checks at 240, 320, 390, 640, 768, 1024,
+and 1280 pixels keep all 84 chart points and eight comparison badges inside
+the page. Markers remain separate, value rows fit, and browser error logs are
+clear. The new sampling note fits in the phone and desktop previews.

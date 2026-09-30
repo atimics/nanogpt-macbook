@@ -1,0 +1,297 @@
+{
+  "source": {
+    "package_version": "0.1.0",
+    "python_source_sha256": "d72aa09cb7d857e59a31580e39ec7ed4016ff2245d54e03b2c6e263a2bbf29be",
+    "commit": "df39732637636db2a0b134acabe1adb24df6a0df",
+    "source_dirty": false
+  },
+  "reference": {
+    "commit": "df39732637636db2a0b134acabe1adb24df6a0df",
+    "files_sha256": {
+      "src/nanogpt_macbook/model.py": "413e82179a58213eb2dbbeee0056dd6542c8a4cf75c7985e9f120a889fd92f0a",
+      "src/nanogpt_macbook/engine.py": "d70c46e7d47bd750cce5eecf64451afc8bed6a30550936ff92571f13e61be552"
+    },
+    "scope": "current shared operators with model and engine code from this commit"
+  },
+  "prototype": "import argparse\nimport hashlib\nimport inspect\nimport json\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\nimport numpy as np\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nfrom compare_sampling import compare, reference_modules\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.model import GPT, _residual_projection\n\n\ndef cached_forward(model, tokens, cache):\n    offset = cache[0][0].shape[2] if cache else 0\n    batch, length = tokens.shape\n    x = model.tokens(tokens) + model.positions(mx.arange(offset, offset + length))\n    updated = []\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        width = x.shape[-1]\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        if cache:\n            k, v = [mx.concatenate((old, new), axis=2) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        last = index == len(model.blocks) - 1\n        if last:\n            q, x = q[:, :, -1:, :], x[:, -1:, :]\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=None if last or length == 1 else 'causal')\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, 1 if last else length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_forward = cached_forward\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '    cache = None\\n    compiled_logits = None')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            inputs = mx.array([[sequence[-1]]] if cache is not None else [window], dtype=mx.int32)\n            logits, cache = cached_forward(model, inputs, cache)\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--device', choices=['gpu', 'cpu'], default='gpu')\n    parser.add_argument('--preset', choices=[*PRESETS, 'all'], default='all')\n    parser.add_argument('--pairs', type=int, default=5)\n    parser.add_argument('--out', type=Path, required=True)\n    args = parser.parse_args()\n    args.tokens, args.temperature, args.top_k, args.seed = 200, 0.8, 40, 42\n    assert not args.out.exists()\n    engine.select_device(args.device, 2)\n    reference, info = reference_modules('df39732')\n    import compare_sampling\n    compare_sampling.engine = patched_engine()\n    record = dict(source=source_info(), reference=info, prototype=Path(__file__).read_text(), device=args.device, results=[], correctness=[])\n    for preset in PRESETS if args.preset == 'all' else [args.preset]:\n        config = PRESETS[preset][0]\n        mx.random.seed(1337)\n        model = GPT(config)\n        model.eval()\n        mx.eval(model.parameters())\n        ids = mx.array(np.random.default_rng(1337).integers(0, 256, size=(1, config.context), dtype=np.int32))\n        cache = None\n        differences = []\n        for length in [16, 17, 18, 19, 20]:\n            actual, cache = cached_forward(model, ids[:, :length] if cache is None else ids[:, length-1:length], cache)\n            expected = model(ids[:, :length], last_token_only=True)[0, -1]\n            np.testing.assert_allclose(np.array(actual), np.array(expected), atol=3e-6, rtol=3e-5)\n            differences.append(float(mx.max(mx.abs(actual - expected)).item()))\n        record['correctness'].append(dict(preset=preset, max_errors=differences))\n        del model, cache, actual, expected, ids\n        for length in [16, config.context]:\n            prompt = ('After the rain, Mira opened the window. ' * 20)[:length]\n            compare(config, preset, prompt, args, reference, record)\n    print(json.dumps({r['preset']+str(r['prompt_bytes']):dict(ratio=r['median_ratio'], matches=r['matching_byte_pairs']) for r in record['results']}), flush=True)\n\n\nif __name__ == '__main__':\n    main()\n",
+  "device": "cpu",
+  "results": [
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, ",
+      "prompt_bytes": 16,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.4700297089293599,
+          "bytes_per_second": 425.5050185137504,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.3158007082529366,
+          "bytes_per_second": 633.3108025831675,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.3232320840470493,
+          "bytes_per_second": 618.7504578626181,
+          "peak_memory_mib": 5.21502685546875,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.4744172082282603,
+          "bytes_per_second": 421.5698683167756,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.47222729166969657,
+          "bytes_per_second": 423.5248650979955,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.31654200004413724,
+          "bytes_per_second": 631.8276878648421,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.31668187491595745,
+          "bytes_per_second": 631.548616582736,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.46976208314299583,
+          "bytes_per_second": 425.7474308311084,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.4751592497341335,
+          "bytes_per_second": 420.91151569059485,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.3185016247443855,
+          "bytes_per_second": 627.9402818133523,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "fa00a23d132d56c4700a3dbc94c736bf3fa78f0bf1142fb8f84d590d4c1cf1b2",
+          "text_sha256": "faf9ff6293bbf2b4e9368bc09c3ab2b6324d279bb36b7ac548a96b92563db3c8"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.4883744609999277,
+        1.4677293240457054,
+        1.491831389211704,
+        1.4833879686599163,
+        1.491858165921364
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 1.4883744609999277,
+      "aggregate_ratio": 1.4845722028132078,
+      "faster_pairs": 5,
+      "median_bytes_per_second": {
+        "reference": 423.5248650979955,
+        "updated": 631.548616582736
+      }
+    },
+    {
+      "preset": "tiny",
+      "model_config": {
+        "context": 128,
+        "layers": 4,
+        "heads": 4,
+        "width": 128,
+        "vocab_size": 256
+      },
+      "prompt": "After the rain, Mira opened the window. After the rain, Mira opened the window. After the rain, Mira opened the window. After th",
+      "prompt_bytes": 128,
+      "samples": [
+        {
+          "pair": 1,
+          "path": "reference",
+          "elapsed_seconds": 0.6094270842149854,
+          "bytes_per_second": 328.17707840737637,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 1,
+          "path": "updated",
+          "elapsed_seconds": 0.6090353750623763,
+          "bytes_per_second": 328.38814983368803,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "updated",
+          "elapsed_seconds": 0.6165912910364568,
+          "bytes_per_second": 324.3639715763918,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 2,
+          "path": "reference",
+          "elapsed_seconds": 0.6145694167353213,
+          "bytes_per_second": 325.4310978610488,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "reference",
+          "elapsed_seconds": 0.6182824173010886,
+          "bytes_per_second": 323.476771138075,
+          "peak_memory_mib": 5.215023040771484,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 3,
+          "path": "updated",
+          "elapsed_seconds": 0.6135628749616444,
+          "bytes_per_second": 325.964963268846,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "updated",
+          "elapsed_seconds": 0.6173075414262712,
+          "bytes_per_second": 323.98761812937806,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 4,
+          "path": "reference",
+          "elapsed_seconds": 0.6154898330569267,
+          "bytes_per_second": 324.944441416146,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "reference",
+          "elapsed_seconds": 0.6140820421278477,
+          "bytes_per_second": 325.68938070063507,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        },
+        {
+          "pair": 5,
+          "path": "updated",
+          "elapsed_seconds": 0.6177696669474244,
+          "bytes_per_second": 323.7452576593099,
+          "peak_memory_mib": 5.215019226074219,
+          "generated_byte_count": 200,
+          "generated_bytes_sha256": "cd64f7c4e8f72be8a339ac7670a98b5b1251fb6912a9fdcace7ff408cb4100b7",
+          "text_sha256": "f925a034492af3529e52b707035c3324f0bd2011f22e7b7d8c9c4c596baace10"
+        }
+      ],
+      "updated_over_reference_ratios": [
+        1.0006431632194912,
+        0.9967208841082772,
+        1.0076920272266134,
+        0.9970554249748113,
+        0.9940307447631763
+      ],
+      "matching_byte_pairs": 5,
+      "median_ratio": 0.9970554249748113,
+      "aggregate_ratio": 0.9992141358590798,
+      "faster_pairs": 2,
+      "median_bytes_per_second": {
+        "reference": 325.4310978610488,
+        "updated": 324.3639715763918
+      }
+    }
+  ],
+  "correctness": [
+    {
+      "preset": "tiny",
+      "max_errors": [
+        0.0,
+        2.384185791015625e-07,
+        3.3527612686157227e-07,
+        2.980232238769531e-07,
+        2.905726432800293e-07
+      ]
+    }
+  ],
+  "prototype_entrypoint": "ngpt_prefix_cache_probe.py",
+  "prototype_sources": {
+    "ngpt_prefix_cache_probe.py": "import argparse\nimport hashlib\nimport inspect\nimport json\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\nimport numpy as np\n\nsys.path.insert(0, '/private/tmp/nanogpt-macbook-build/scripts')\nfrom compare_sampling import compare, reference_modules\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.benchmark import source_info\nfrom nanogpt_macbook.config import PRESETS\nfrom nanogpt_macbook.model import GPT, _residual_projection\n\n\ndef cached_forward(model, tokens, cache):\n    offset = cache[0][0].shape[2] if cache else 0\n    batch, length = tokens.shape\n    x = model.tokens(tokens) + model.positions(mx.arange(offset, offset + length))\n    updated = []\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        width = x.shape[-1]\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        if cache:\n            k, v = [mx.concatenate((old, new), axis=2) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        last = index == len(model.blocks) - 1\n        if last:\n            q, x = q[:, :, -1:, :], x[:, -1:, :]\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=None if last or length == 1 else 'causal')\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, 1 if last else length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_forward = cached_forward\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '    cache = None\\n    compiled_logits = None')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            inputs = mx.array([[sequence[-1]]] if cache is not None else [window], dtype=mx.int32)\n            logits, cache = cached_forward(model, inputs, cache)\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--device', choices=['gpu', 'cpu'], default='gpu')\n    parser.add_argument('--preset', choices=[*PRESETS, 'all'], default='all')\n    parser.add_argument('--pairs', type=int, default=5)\n    parser.add_argument('--out', type=Path, required=True)\n    args = parser.parse_args()\n    args.tokens, args.temperature, args.top_k, args.seed = 200, 0.8, 40, 42\n    assert not args.out.exists()\n    engine.select_device(args.device, 2)\n    reference, info = reference_modules('df39732')\n    import compare_sampling\n    compare_sampling.engine = patched_engine()\n    record = dict(source=source_info(), reference=info, prototype=Path(__file__).read_text(), device=args.device, results=[], correctness=[])\n    for preset in PRESETS if args.preset == 'all' else [args.preset]:\n        config = PRESETS[preset][0]\n        mx.random.seed(1337)\n        model = GPT(config)\n        model.eval()\n        mx.eval(model.parameters())\n        ids = mx.array(np.random.default_rng(1337).integers(0, 256, size=(1, config.context), dtype=np.int32))\n        cache = None\n        differences = []\n        for length in [16, 17, 18, 19, 20]:\n            actual, cache = cached_forward(model, ids[:, :length] if cache is None else ids[:, length-1:length], cache)\n            expected = model(ids[:, :length], last_token_only=True)[0, -1]\n            np.testing.assert_allclose(np.array(actual), np.array(expected), atol=3e-6, rtol=3e-5)\n            differences.append(float(mx.max(mx.abs(actual - expected)).item()))\n        record['correctness'].append(dict(preset=preset, max_errors=differences))\n        del model, cache, actual, expected, ids\n        for length in [16, config.context]:\n            prompt = ('After the rain, Mira opened the window. ' * 20)[:length]\n            compare(config, preset, prompt, args, reference, record)\n    print(json.dumps({r['preset']+str(r['prompt_bytes']):dict(ratio=r['median_ratio'], matches=r['matching_byte_pairs']) for r in record['results']}), flush=True)\n\n\nif __name__ == '__main__':\n    main()\n",
+    "ngpt_prefix_cache_static_probe.py": "import inspect\nimport sys\nfrom pathlib import Path\nfrom types import ModuleType\n\nimport mlx.core as mx\n\nimport ngpt_prefix_cache_probe as base\nfrom nanogpt_macbook import engine\nfrom nanogpt_macbook.activations import gelu_approx\nfrom nanogpt_macbook.model import _residual_projection\n\n\ndef static_step(model, tokens, cache, position):\n    x = model.tokens(tokens) + model.positions(position)\n    updated = []\n    mask = mx.arange(model.config.context) <= position\n    for index, block in enumerate(model.blocks):\n        attention = block.attention\n        batch, length, width = x.shape\n        q, k, v = mx.split(attention.qkv(block.attention_norm(x)), 3, axis=-1)\n        q, k, v = [a.reshape(batch, length, attention.heads, width // attention.heads).transpose(0, 2, 1, 3) for a in (q, k, v)]\n        k, v = [mx.slice_update(old, new, position, axes=[2]) for old, new in zip(cache[index], (k, v))]\n        updated.append((k, v))\n        attended = mx.fast.scaled_dot_product_attention(q, k, v, scale=(width // attention.heads) ** -0.5, mask=mask)\n        hidden = attended.transpose(0, 2, 1, 3).reshape(batch, length, width)\n        x = _residual_projection(x, hidden, attention.proj)\n        x = _residual_projection(x, gelu_approx(block.up(block.mlp_norm(x))), block.down)\n    return model.tokens.as_linear(model.norm(x))[0, -1], updated\n\n\ndef padded_prefill(model, inputs):\n    logits, cache = base.cached_forward(model, inputs, None)\n    cache = [(mx.pad(k, [(0, 0), (0, 0), (0, model.config.context - k.shape[2]), (0, 0)]), mx.pad(v, [(0, 0), (0, 0), (0, model.config.context - v.shape[2]), (0, 0)])) for k, v in cache]\n    return logits, cache\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.static_step = static_step\n    module.padded_prefill = padded_prefill\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '''    cache = None\n    cached_step = mx.compile(lambda inputs, state, position: static_step(model, inputs, state, position))\n    compiled_logits = None''')\n    source = source.replace('        logits = forward(mx.array([window], dtype=mx.int32))', '''        if len(sequence) <= model.config.context and (cache is not None or (len(window) < model.config.context and tokens - index > 1)):\n            if cache is None:\n                logits, cache = padded_prefill(model, mx.array([window], dtype=mx.int32))\n            else:\n                logits, cache = cached_step(mx.array([[sequence[-1]]], dtype=mx.int32), cache, mx.array([len(sequence)-1], dtype=mx.int32))\n        else:\n            cache = None\n            logits = forward(mx.array([window], dtype=mx.int32))''')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\nbase.patched_engine = patched_engine\nif __name__ == '__main__':\n    base.main()\n",
+    "ngpt_prefix_cache_queued_probe.py": "import inspect\nfrom types import ModuleType\n\nimport mlx.core as mx\n\nimport ngpt_prefix_cache_probe as base\nfrom ngpt_prefix_cache_static_probe import padded_prefill, static_step\nfrom nanogpt_macbook import engine\n\n\ndef choose(logits, temperature, top_k):\n    if temperature == 0:\n        return mx.argmax(logits)\n    logits = logits / temperature\n    if top_k:\n        cutoff = mx.sort(logits)[-top_k]\n        logits = mx.where(logits >= cutoff, logits, -float('inf'))\n    return mx.random.categorical(logits)\n\n\ndef cached_prefix(model, window, count, temperature, top_k):\n    logits, cache = padded_prefill(model, mx.array([window], dtype=mx.int32))\n    token = choose(logits, temperature, top_k)\n    outputs = [token]\n    mx.async_eval(token, cache)\n\n    def step(token, cache, position):\n        logits, cache = static_step(model, token.reshape(1, 1), cache, position)\n        return choose(logits, temperature, top_k), cache\n\n    step = mx.compile(step, inputs=mx.random.state, outputs=mx.random.state)\n    for index in range(1, count):\n        token, cache = step(token, cache, mx.array([len(window) + index - 1], dtype=mx.int32))\n        outputs.append(token)\n        mx.async_eval(token, cache)\n        if index % 8 == 0:\n            mx.eval(outputs[-8])\n    return mx.stack(outputs).tolist()\n\n\ndef patched_engine():\n    module = ModuleType('cached_engine')\n    module.__dict__.update(engine.__dict__)\n    module.cached_prefix = cached_prefix\n    source = inspect.getsource(engine.generate)\n    source = source.replace('    compiled_logits = None', '''    if len(sequence) < model.config.context and tokens > 1:\n        count = min(tokens, model.config.context - len(sequence) + 1)\n        generated = cached_prefix(model, sequence, count, temperature, top_k)\n        sequence.extend(generated)\n    compiled_logits = None''')\n    source = source.replace('    for index in range(tokens):', '    for index in range(len(generated), tokens):')\n    exec(compile(source, __file__, 'exec'), module.__dict__)\n    return module\n\n\nbase.patched_engine = patched_engine\nif __name__ == '__main__':\n    base.main()\n"
+  },
+  "method_note": "Five alternating pairs, 200 bytes, temperature 0.8, top-k 40, sampling seed 42, weight seed 1337. One process; complete generation timed after weights load. The correctness array checks the dynamic forward. Byte hashes check the chosen prototype. Early calls include kernel setup."
+}
