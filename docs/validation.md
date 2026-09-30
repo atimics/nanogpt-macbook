@@ -236,3 +236,43 @@ code change; they include the previous source commit and its file hash.
 The 300-step story run reached validation loss 2.1712095, matching the prior
 2.1712059 to four decimal places. Its [learning receipt](../benchmarks/learning/demo-231140f.json)
 contains the source hash and all reported metrics.
+
+## Chart container and text sizing, 30 September 2026
+
+The 44-point page fits ordinary desktop and phone viewports. Two additional
+browser settings exposed overflow in Chromium and WebKit:
+
+- With a 360 px results container inside a 1280 px viewport, bar rows needed
+  254 px in 206 px of space. The timeline grid kept two columns and clipped
+  its axis title.
+- With Chromium's minimum font size set to 20 px, a 320 px page needed
+  291 px for a 244 px memory row. Selecting Memory moved the page sideways.
+  At 1280 px, the expanded result table also needed more than its 1104 px
+  container.
+
+Timeline columns now follow their container width. Labels and values share
+natural space above full-width bars. Controls, the header, and phone highlights
+wrap with larger text. The result table measures its rendered width and uses
+cards when needed. Opening the details, changing the device filter, or resizing
+the container runs that check. Height changes retain the chosen layout.
+
+The browser audit covers Chromium, Chromium with 20 px minimum text, and
+WebKit at widths 240, 280, 320, 600, 851, and 1280 px. It also sets
+`#results { max-width: 360px }` at 1280 px. Both chart metrics fit in all 42
+states: document width equals viewport width, horizontal scroll position is
+zero, and visible SVG text and points stay within the plot. The narrow
+container's bar rows now use 206 px; the 320 px memory rows use 244 px.
+
+A second audit opens the result details with the keyboard, changes each device
+filter, and cycles between 320 and 1280 px. It checks table and card widths,
+stable layout, focus, and browser errors. A 224-point fixture adds 60 GPU-only
+commits to the shared axis to check a long history with sparse CPU data.
+The real page retains all 44 points and all eight baseline/previous badges.
+Six Node regressions and eight Python site tests pass, as do Ruff and format
+checks.
+
+To repeat the large-text check in Chromium, launch a test browser with
+`--blink-settings=minimumFontSize=20`, open the built page at 320 px, and select
+Memory. For the container check, apply the rule above at 1280 px. Open
+“All measured results and settings”, change each device filter, and resize down
+and up. Check the whole page, visible axis text, values, and expanded results.

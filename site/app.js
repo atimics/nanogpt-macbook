@@ -37,6 +37,26 @@ document.querySelectorAll('.timeline-plot').forEach(plot => {
   fitTimelineLabels(plot);
   timelineObserver.observe(plot);
 });
+function fitResultTable(region) {
+  if (!region.clientWidth) return;
+  region.dataset.layout = 'table';
+  region.dataset.layout = region.querySelector('table').scrollWidth > region.clientWidth + 1 ? 'cards' : 'table';
+}
+document.querySelectorAll('.results-details').forEach(details => {
+  const region = details.querySelector('.table-scroll');
+  let previousSize;
+  let fitFrame;
+  const refresh = () => { if (details.open) fitResultTable(region); };
+  details.addEventListener('toggle', refresh);
+  new ResizeObserver(entries => {
+    // Card height can change during fitting. Only width or text size needs a new fit.
+    const size = `${entries[0].contentRect.width}/${getComputedStyle(region).fontSize}`;
+    if (size === previousSize) return;
+    previousSize = size;
+    cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(refresh);
+  }).observe(region);
+});
 metricButtons.forEach(button => button.addEventListener('click', () => {
   const memory = button.dataset.metric === 'memory';
   metricButtons.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
@@ -53,6 +73,7 @@ deviceButtons.forEach(button => button.addEventListener('click', () => {
   });
   const count = document.querySelectorAll('#speed-chart .bar-row:not([hidden])').length;
   document.getElementById('visible-count').textContent = `${count} measured configuration${count === 1 ? '' : 's'}`;
+  document.querySelectorAll('.results-details[open] .table-scroll').forEach(fitResultTable);
 }));
 document.getElementById('copy-command').addEventListener('click', async event => {
   const button = event.currentTarget;
