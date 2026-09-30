@@ -101,6 +101,30 @@ The [comparison receipt](ci/36748450305/comparison.json) includes the host,
 run order, per-sample file hashes, and all paired ratios. The harness commit is
 `925df18710f14b7132e67e28dc3a2b54d9e1cbd6`.
 
+## All presets
+
+All three presets now have a hosted rerun. Each job used the same baseline
+`2c7f63f` and candidate `07b11a7`, with six A/A pairs and six A/B pairs on its
+own worker. All three reported the same runner image and software versions.
+
+| Preset | Paired change | Same-commit range | Candidate faster | Raw run |
+| --- | ---: | ---: | ---: | --- |
+| tiny | -7.98% | -16.31% to +6.39% | 2 of 6 | [36750498161](ci/36750498161/) |
+| small | +1.17% | -1.35% to +7.63% | 4 of 6 | [36750509324](ci/36750509324/) |
+| medium | +2.07% | -2.74% to +3.66% | 6 of 6 | [36748450305](ci/36748450305/) |
+
+Every measured change lies inside that preset's same-commit range. These runs
+show why noise checks matter: the free hosted GPU also has variable timing,
+especially for short tiny-model samples. Use longer samples or a quiet,
+dedicated Apple Silicon host before treating changes of this size as settled.
+
+The Pages site shows separate CI commit comparisons with both baseline and
+previous-commit percentages. It calculates chart values from the six A/B samples
+per commit. Those percentages compare median rates; the table above uses the
+median of paired ratios. Each card links its raw receipts and displays its
+same-commit range. The original M4 Max history stays in its own chart section.
+All 72 samples are kept in this repository.
+
 ## Hosted numerical checks
 
 The first hosted Metal test run passed 374 of 376 tests. Two end-to-end checks

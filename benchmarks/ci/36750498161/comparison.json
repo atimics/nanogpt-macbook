@@ -1,0 +1,327 @@
+{
+  "format": "ci-paired-v1",
+  "host": {
+    "recorded_at": "2026-09-30T17:19:30.002410+00:00",
+    "system": "Darwin",
+    "os_version": "26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.10",
+    "mlx": "0.32.3",
+    "numpy": "2.5.3",
+    "metal_available": true,
+    "device": {
+      "device_name": "Apple Paravirtual device",
+      "max_recommended_working_set_size": 5010800640,
+      "memory_size": 7516192768,
+      "architecture": "air64_v27",
+      "max_buffer_length": 3758096384,
+      "resource_limit": 499000
+    },
+    "runner": {
+      "BENCHMARK_RUNNER_LABEL": "macos-26",
+      "RUNNER_NAME": "GitHub Actions 1000074497",
+      "RUNNER_ARCH": "ARM64",
+      "ImageOS": "macos26",
+      "ImageVersion": "20260907.0351.1",
+      "GITHUB_RUN_ID": "36750498161",
+      "GITHUB_RUN_ATTEMPT": "1",
+      "GITHUB_REPOSITORY": "cenetex/nanogpt-macbook",
+      "GITHUB_SHA": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6"
+    },
+    "gpu_check": 523776.0
+  },
+  "commits": {
+    "baseline": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+    "candidate": "07b11a7b9a8f0bcc883583776178809faca3190e"
+  },
+  "harness_commit": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6",
+  "harness_sha256": "29da2aa56cad9ab8668e75ba20a37229788ce0ef2009fdeebac4ee8b5fe7d54f",
+  "method": {
+    "pairs_per_phase": 6,
+    "steps": 100,
+    "warmup": 20,
+    "seed": 1337,
+    "memory_gib": 2,
+    "order": "A/B on odd pairs, B/A on even pairs; fresh process for each sample",
+    "calibration": "A and B use the baseline commit before each preset comparison"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-01-a.json",
+      "bytes_per_second": 95022.59976590081,
+      "sha256": "b4855b5a310649d1f7a569ca36de6d666ca140d2f373b497bbd94c366a931219"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-01-b.json",
+      "bytes_per_second": 89240.34051203159,
+      "sha256": "ffa9e320da3997eeebfe0bb78915f7933431ca17131049c6c1fbb0993a089a4b"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-02-b.json",
+      "bytes_per_second": 98858.03608639297,
+      "sha256": "a94c4f608a6e7410c2d44bbf933bf10c9c23ecc00e0eb2c92940557d6cb4cd1d"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-02-a.json",
+      "bytes_per_second": 94121.20117226514,
+      "sha256": "0c0ac504436e544ebcce92ef71436759824a35bc0268ebd6e35c728809d386b5"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-03-a.json",
+      "bytes_per_second": 101191.03278468638,
+      "sha256": "8191478795ce545a994c8461d4f39021e5a732e43a2562ca445d0eecfb616d82"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-03-b.json",
+      "bytes_per_second": 96418.41454962244,
+      "sha256": "b9575b8516a8302e6cc977e14e68cda98fad95908884889b8e06fdf5c25af603"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-04-b.json",
+      "bytes_per_second": 78475.48345237396,
+      "sha256": "e1723b8e25a427340e8d1a6379f91e12c890c58be601c6e3dbf1993e358d494e"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-04-a.json",
+      "bytes_per_second": 93764.54701091176,
+      "sha256": "61a617798482bc48854a31c99e1a6684afc23dbdc7d90b11977dc203e360c31c"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-05-a.json",
+      "bytes_per_second": 90806.1204446078,
+      "sha256": "9a71eb206fa727f39092bb0875fb3202f065027b8211ad4362cdacba59080412"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-05-b.json",
+      "bytes_per_second": 96610.21429623806,
+      "sha256": "85d276ea69455ac99d4fa01d595006ecd17590617ecaf10d62ca32f831a7c610"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-06-b.json",
+      "bytes_per_second": 91347.68729261485,
+      "sha256": "4d04be0054b7b22703b6717ff91d51da45c5beb8d30ba899acbaabbee3d23cf8"
+    },
+    {
+      "preset": "tiny",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-calibration-06-a.json",
+      "bytes_per_second": 95279.08349873847,
+      "sha256": "b5f1d1fd9b051bdc60d29623b4931f1f9a65209310e590d8bfeb99a093eec5ca"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-01-a.json",
+      "bytes_per_second": 98202.62346774408,
+      "sha256": "129d872f50fcc7c69cd101974b4015db953fb908ed3beb7c1774ec2872f3c2a5"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-01-b.json",
+      "bytes_per_second": 91531.6603503624,
+      "sha256": "119debfc8e810ab563721a731f15a6e09477377a469dc17771efa009e8f0ba37"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-02-b.json",
+      "bytes_per_second": 89160.07444082518,
+      "sha256": "bb4cd988a5c71b465e46f098109396ea362b385a809b17dbe5c9ddbb8cdc4ca1"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-02-a.json",
+      "bytes_per_second": 98168.75486979049,
+      "sha256": "90287e2e5ca096ad2f63e28ee7c34fbdbb3646c1ceb4b2cb04f11c630f53568f"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-03-a.json",
+      "bytes_per_second": 80700.41497863644,
+      "sha256": "c24075ffc0d278ae97082527168d96d3811f35b3dd1efcd9e3a79d7793ce3986"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-03-b.json",
+      "bytes_per_second": 85745.75253935055,
+      "sha256": "1ad5f5b8e711d5ca82e0108795b4d43a1f37602e2274c9db12646696c502ab87"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-04-b.json",
+      "bytes_per_second": 95034.99020821683,
+      "sha256": "854bf4f6e7d68fa14d6c1fdf3aeb5edeb41d5530d68d78a8c79806ae5e99a767"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-04-a.json",
+      "bytes_per_second": 91253.93282951777,
+      "sha256": "8a788c33078f0310026cc3130c2f099f349013e98250199bb4f40543674ad2e8"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-05-a.json",
+      "bytes_per_second": 90193.82862520945,
+      "sha256": "d8d6c13e0ffa485a1bd72685be57613ee0362ee857359bad414b21899754df1f"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-05-b.json",
+      "bytes_per_second": 72721.12866992624,
+      "sha256": "d5c4c0a3b928bb391d098f98c13ccd2167a73cf9e920729170d9bfb2e20be8f8"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "tiny-comparison-06-b.json",
+      "bytes_per_second": 70631.85879278484,
+      "sha256": "4ee7abcb5a930e145562b03b716cd6205612e3e93c35d008b2fbda6bb6a16011"
+    },
+    {
+      "preset": "tiny",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "tiny-comparison-06-a.json",
+      "bytes_per_second": 79890.51205049788,
+      "sha256": "fb0a2c28b5fd7106eddefa9911c8ae14829d3cfe9f6ef5bc9590f10888e5df72"
+    }
+  ],
+  "summaries": {
+    "tiny": {
+      "calibration": {
+        "pairs": 6,
+        "median_change_percent": -4.4213170213915856,
+        "min_change_percent": -16.305804321497497,
+        "max_change_percent": 6.391743005000183,
+        "median_absolute_change_percent": 5.558919064752926,
+        "b_faster_pairs": 2,
+        "ratios": [
+          0.9391485891975752,
+          1.0503269704926337,
+          0.9528355615737306,
+          0.836941956785025,
+          1.0639174300500018,
+          0.9587380979984377
+        ]
+      },
+      "comparison": {
+        "pairs": 6,
+        "median_change_percent": -7.984894406049392,
+        "min_change_percent": -19.372389687424285,
+        "max_change_percent": 6.25193508862345,
+        "median_absolute_change_percent": 7.984894406049392,
+        "b_faster_pairs": 2,
+        "ratios": [
+          0.9320694001665563,
+          0.9082327117124559,
+          1.0625193508862345,
+          1.0414344594414675,
+          0.8062761031257571,
+          0.8841082248682953
+        ]
+      }
+    }
+  }
+}

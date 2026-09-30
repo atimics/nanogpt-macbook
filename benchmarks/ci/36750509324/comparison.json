@@ -1,0 +1,327 @@
+{
+  "format": "ci-paired-v1",
+  "host": {
+    "recorded_at": "2026-09-30T17:21:38.481359+00:00",
+    "system": "Darwin",
+    "os_version": "26.6.2",
+    "architecture": "arm64",
+    "python": "3.12.10",
+    "mlx": "0.32.3",
+    "numpy": "2.5.3",
+    "metal_available": true,
+    "device": {
+      "device_name": "Apple Paravirtual device",
+      "max_recommended_working_set_size": 5010800640,
+      "memory_size": 7516192768,
+      "architecture": "air64_v27",
+      "max_buffer_length": 3758096384,
+      "resource_limit": 499000
+    },
+    "runner": {
+      "BENCHMARK_RUNNER_LABEL": "macos-26",
+      "RUNNER_NAME": "GitHub Actions 1000074498",
+      "RUNNER_ARCH": "ARM64",
+      "ImageOS": "macos26",
+      "ImageVersion": "20260907.0351.1",
+      "GITHUB_RUN_ID": "36750509324",
+      "GITHUB_RUN_ATTEMPT": "1",
+      "GITHUB_REPOSITORY": "cenetex/nanogpt-macbook",
+      "GITHUB_SHA": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6"
+    },
+    "gpu_check": 523776.0
+  },
+  "commits": {
+    "baseline": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+    "candidate": "07b11a7b9a8f0bcc883583776178809faca3190e"
+  },
+  "harness_commit": "925df18710f14b7132e67e28dc3a2b54d9e1cbd6",
+  "harness_sha256": "29da2aa56cad9ab8668e75ba20a37229788ce0ef2009fdeebac4ee8b5fe7d54f",
+  "method": {
+    "pairs_per_phase": 6,
+    "steps": 100,
+    "warmup": 20,
+    "seed": 1337,
+    "memory_gib": 2,
+    "order": "A/B on odd pairs, B/A on even pairs; fresh process for each sample",
+    "calibration": "A and B use the baseline commit before each preset comparison"
+  },
+  "complete": true,
+  "samples": [
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-01-a.json",
+      "bytes_per_second": 27439.94354077266,
+      "sha256": "807f69be2ece04b7a84bf5909f48fadd4fb23cba75e7248f487698b5d076f266"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 1,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-01-b.json",
+      "bytes_per_second": 29533.77411674026,
+      "sha256": "3006fbca8a8215141aab34e19b145020dae0f20eba5c671315dd500d92936e96"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-02-b.json",
+      "bytes_per_second": 27916.329210260206,
+      "sha256": "e56b71d87ff031834e2fd61070073a34389e13fbbec9b1753fa5623af4fbf2b6"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-02-a.json",
+      "bytes_per_second": 28199.84974982365,
+      "sha256": "392c014b2f86d6cb385f5e23e050875eb938920306b22229d754b9d550d3e3b5"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-03-a.json",
+      "bytes_per_second": 28126.425880953724,
+      "sha256": "dc1d1355e71d95f45ca577ac5f5ec70e4db3ef3e5eef13f54c0c14cc5f913b1c"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 3,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-03-b.json",
+      "bytes_per_second": 27747.19579391051,
+      "sha256": "2b1b185d72d8087f5f7af3264a77283920fbf37ce63a03266059193aafe79b77"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-04-b.json",
+      "bytes_per_second": 27571.012015670534,
+      "sha256": "a3acac7619170363eccc2cb8dd77ff7b6c5ef8ff0a13f351ef92d1a9c5505873"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-04-a.json",
+      "bytes_per_second": 27200.084799026856,
+      "sha256": "37cdfab17a6757d791c864a9dad59be51aff09bbecd921478f0450d37be47a11"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-05-a.json",
+      "bytes_per_second": 27885.235731871904,
+      "sha256": "f1b346e8c73da39711df8d93323c95c849b35491663a2a45f09aaf6e2f88a534"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 5,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-05-b.json",
+      "bytes_per_second": 27704.118880547176,
+      "sha256": "f3aadad3ab427ae81e092163d3018690008389bebdd6e1145b969c1cf587ad6b"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "b",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-06-b.json",
+      "bytes_per_second": 27685.86722501723,
+      "sha256": "36e5e71453036c56556715abbedd9c1cae4b56ca414b710b86de9f933c418ba9"
+    },
+    {
+      "preset": "small",
+      "phase": "calibration",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-calibration-06-a.json",
+      "bytes_per_second": 27733.45996228932,
+      "sha256": "ee99b21a6dc45a3ff906f08b8b0e046eac9e9139dfc93ba4c267ded39d00f52d"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-01-a.json",
+      "bytes_per_second": 23583.163440707503,
+      "sha256": "1a8d16070ca1de26987a43e46630bf354f23da8429e44d9f3194af0aaa0eca61"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 1,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-01-b.json",
+      "bytes_per_second": 27430.434006472497,
+      "sha256": "9cd5f2034cf6979be34364530fb899c7ab5481e5f56ab2f8a904ef35b8210061"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-02-b.json",
+      "bytes_per_second": 28281.95723503608,
+      "sha256": "6e03ae1689023f95a4b26d7acc9dfb86fa7e1956224993e426017bf00320af0c"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 2,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-02-a.json",
+      "bytes_per_second": 27222.25770479281,
+      "sha256": "c0bf3e9697acc78c57d7414f78345e726456eedc0f1120bb5d7c4a16a102f42b"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-03-a.json",
+      "bytes_per_second": 28636.965225173248,
+      "sha256": "23d8b9c64e98591a74d1a43a45eae8b7d8904c8df83d8f0aca12374322ba3199"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 3,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-03-b.json",
+      "bytes_per_second": 28678.374510931342,
+      "sha256": "0b23b0d02662276bb70d522aad6effb9c4b18eafe9457ed2effbf9669979c35b"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-04-b.json",
+      "bytes_per_second": 28288.582050270186,
+      "sha256": "14cfa6b6a0b38d4b4ce92440ce600fad989e06745fae5bb8d83c46363c654a85"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 4,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-04-a.json",
+      "bytes_per_second": 28399.95939099784,
+      "sha256": "65772246f88a0b5c759c8f5f5a891f82e4ecae84b9a102ab0a2b5262024b1216"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-05-a.json",
+      "bytes_per_second": 27975.021638638344,
+      "sha256": "9625ddf72f5626b2bb4587f45a878db36c266a2780addba65a31eecd38e49f9c"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 5,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-05-b.json",
+      "bytes_per_second": 28588.36286104868,
+      "sha256": "f9e2b6ad44480a90b15e5dfdb9796678ff00a5064f1986240a54c04a4f06f71c"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "b",
+      "commit": "07b11a7b9a8f0bcc883583776178809faca3190e",
+      "file": "small-comparison-06-b.json",
+      "bytes_per_second": 28379.952972145293,
+      "sha256": "9c713dd6eb4a4909180e350b78e3f627686c82037dcaeceaa264589da9914a8a"
+    },
+    {
+      "preset": "small",
+      "phase": "comparison",
+      "pair": 6,
+      "side": "a",
+      "commit": "2c7f63f1fc615e4fab7a525faaa1831724752a06",
+      "file": "small-comparison-06-a.json",
+      "bytes_per_second": 28734.894362081777,
+      "sha256": "e23f42031af67f74fe555f28e02e5af5baa7510964600f920ac5f2f2d60f9525"
+    }
+  ],
+  "summaries": {
+    "small": {
+      "calibration": {
+        "pairs": 6,
+        "median_change_percent": -0.4105578479252803,
+        "min_change_percent": -1.3483052864531109,
+        "max_change_percent": 7.630593601099811,
+        "median_absolute_change_percent": 1.176851313749111,
+        "b_faster_pairs": 2,
+        "ratios": [
+          1.076305936010998,
+          0.9899460265895489,
+          0.9865169471354689,
+          1.0136369875088385,
+          0.9935049194826164,
+          0.998283923558878
+        ]
+      },
+      "comparison": {
+        "pairs": 6,
+        "median_change_percent": 1.1685305212229213,
+        "min_change_percent": -1.2352277529332434,
+        "max_change_percent": 16.313632288720513,
+        "median_absolute_change_percent": 1.7138439890525048,
+        "b_faster_pairs": 4,
+        "ratios": [
+          1.1631363228872051,
+          1.0389276871057134,
+          1.0014460081727408,
+          0.9960782570427563,
+          1.0219246022517177,
+          0.9876477224706676
+        ]
+      }
+    }
+  }
+}
