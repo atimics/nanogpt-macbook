@@ -95,6 +95,71 @@ def _softmax(head_dim):
 
 
 @lru_cache(maxsize=1)
+def _score_softmax_kernel():
+    # Eight query rows share a score tile. Normalize it in threadgroup memory
+    # so the matrix product and softmax use one kernel and one global output.
+    return mx.fast.metal_kernel(
+        name="nanogpt_attention_score_softmax",
+        input_names=["q", "k"],
+        output_names=["probs"],
+        header="#include <metal_simdgroup_matrix>\n",
+        source="""
+            uint query = threadgroup_position_in_grid.x * 8;
+            uint head = threadgroup_position_in_grid.y;
+            uint simd = simdgroup_index_in_threadgroup;
+            uint lane = thread_index_in_simdgroup;
+            threadgroup float scores[8 * N];
+            for (uint key = simd * 8; key < N && key <= query + 7; key += 32) {
+                simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.f);
+                for (uint d = 0; d < D; d += 8) {
+                    simdgroup_float8x8 a, b;
+                    simdgroup_load(a, q + (head * N + query) * D + d, D);
+                    simdgroup_load(b, k + (head * N + key) * D + d,
+                                   D, ulong2(0), true);
+                    simdgroup_multiply_accumulate(acc, a, b, acc);
+                }
+                simdgroup_store(acc, scores + key, N);
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint row = simd; row < 8; row += 4) {
+                float values[N / 32];
+                float peak = -INFINITY;
+                for (uint c = 0; c < N / 32; ++c) {
+                    uint col = c * 32 + lane;
+                    float score = col <= query + row
+                        ? scores[row * N + col] * rsqrt(float(D)) : -INFINITY;
+                    values[c] = score;
+                    peak = max(peak, score);
+                }
+                peak = simd_max(peak);
+                float total = 0;
+                for (uint c = 0; c < N / 32; ++c) {
+                    values[c] = exp(values[c] - peak);
+                    total += values[c];
+                }
+                total = simd_sum(total);
+                for (uint c = 0; c < N / 32; ++c) {
+                    uint col = c * 32 + lane;
+                    probs[(head * N + query + row) * N + col] = values[c] / total;
+                }
+            }
+        """,
+    )
+
+
+def _score_softmax(q, k):
+    length, width = q.shape[-2:]
+    return _score_softmax_kernel()(
+        inputs=[q, k],
+        template=[("N", length), ("D", width)],
+        output_shapes=[(*q.shape[:-1], length)],
+        output_dtypes=[mx.float32],
+        grid=(length // 8 * 128, q.size // (length * width), 1),
+        threadgroup=(128, 1, 1),
+    )[0]
+
+
+@lru_cache(maxsize=1)
 def _score_gradient_kernel():
     # Four SIMD groups form an 8-query by 32-key tile. Matrix instructions
     # calculate grad_output @ value.T, then each lane writes adjacent scores.
@@ -146,8 +211,7 @@ def _blocked_attention(block_size):
     @mx.custom_function
     def apply(q, k, v):
         mask = _block_mask(q.shape[-2], block_size)
-        scores = mx.block_masked_mm(q, k.swapaxes(-1, -2), block_size=block_size, mask_out=mask)
-        probs = _softmax(q.shape[-1])(scores)
+        probs = _score_softmax(q, k)
         output = mx.block_masked_mm(probs, v, block_size=block_size, mask_lhs=mask)
         # Keep probabilities as a private saved value for the gradient.
         return output, probs
