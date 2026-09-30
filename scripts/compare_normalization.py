@@ -111,6 +111,9 @@ def main(component="normalization"):
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--baseline-ref", help=f"Use {component} from this trusted local Git ref")
     parser.add_argument("--queued", action="store_true", help="Use the two-step GPU queue")
+    parser.add_argument(
+        "--memory-gb", type=float, default=4, help="MLX memory/cache budget for both live models"
+    )
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
         parser.error("Pairs, steps, and warmup must be positive")
@@ -148,7 +151,7 @@ def main(component="normalization"):
             "scope": f"Current training code with {component} from this commit",
         }
     # Both compiled models stay alive during each comparison.
-    select_device("gpu", 4)
+    select_device("gpu", args.memory_gb)
     operation = "layernorm" if component == "normalization" else component
     receipt = {
         "format": 1,
@@ -162,8 +165,8 @@ def main(component="normalization"):
             "steps_per_path_per_pair": args.steps,
             "warmup_steps_per_path": args.warmup,
             "order": "native then grouped on odd pairs; grouped then native on even pairs",
-            "memory_limit_gib": 4,
-            "cache_limit_gib": 4,
+            "memory_limit_gib": args.memory_gb,
+            "cache_limit_gib": args.memory_gb,
             "timed_work": "host batch creation, forward, loss, backward, clipping, AdamW, sync",
             "summary": "median of grouped/native throughput ratios across adjacent pairs",
         },
