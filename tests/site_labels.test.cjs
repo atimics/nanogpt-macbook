@@ -135,7 +135,11 @@ test('point reading follows pointer and focus, then returns to latest', () => {
   const context = {document, ResizeObserver: class {}};
   vm.runInNewContext(script, context);
   const points = [9, 50, 91].map((position, index) => ({
-    dataset: {position: String(position), value: String((index + 1) * 100), commit: `commit${index}`},
+    dataset: {
+      position: String(position), value: String((index + 1) * 100), commit: `commit${index}`,
+      baselineChange: ['+0.0%', '+100.0%', '+200.0%'][index],
+      previousChange: ['', '+100.0%', '+50.0%'][index],
+    },
   }));
   const events = {};
   const plot = {
@@ -144,25 +148,50 @@ test('point reading follows pointer and focus, then returns to latest', () => {
     addEventListener(name, handler) { events[name] = handler; },
   };
   const value = {}, commit = {};
-  context.setupTimelineReading({querySelector: selector => selector === '.timeline-plot' ? plot : selector === '[data-point-value]' ? value : commit});
+  const comparison = () => ({strong: {}, small: {}, querySelector(name) { return this[name]; }});
+  const baseline = comparison(), previous = comparison();
+  const nodes = {
+    '.timeline-plot': plot, '[data-point-value]': value, '[data-point-commit]': commit,
+    '[data-comparison="baseline"]': baseline, '[data-comparison="previous"]': previous,
+  };
+  context.setupTimelineReading({
+    querySelector: selector => nodes[selector],
+    addEventListener(name, handler) { events[`card:${name}`] = handler; },
+  });
   assert.equal(value.textContent, '300 bytes/s');
   assert.equal(commit.textContent, 'Latest · commit2');
-  events.pointermove({clientX: 110, target: {closest: () => null}});
+  assert.equal(baseline.strong.textContent, '+200.0%');
+  assert.equal(previous.strong.textContent, '+50.0%');
+  assert.equal(baseline.title, 'Baseline commit0: 100 bytes/s');
+  assert.equal(previous.title, 'Previous commit1: 200 bytes/s');
+  events.pointerdown({clientX: 110, target: {closest: () => null}});
   assert.equal(value.textContent, '200 bytes/s');
   assert.equal(commit.textContent, 'Commit · commit1');
+  assert.equal(baseline.strong.textContent, '+100.0%');
+  assert.equal(previous.strong.textContent, '+100.0%');
+  assert.equal(previous.title, 'Previous commit0: 100 bytes/s');
   assert.equal(points.filter(point => point.dataset.active === 'true').length, 1);
   events.pointermove({clientX: 110, target: {closest: () => points[0]}});
   assert.equal(value.textContent, '100 bytes/s', 'A hovered hash belongs to its linked point');
+  assert.equal(baseline.strong.textContent, '+0.0%');
+  assert.equal(previous.strong.textContent, '—');
+  assert.equal(previous.small.textContent, 'first measurement');
   document.activeElement = points[0];
   events.focusin({target: points[0]});
-  events.pointerleave();
+  events['card:pointerleave']({pointerType: 'mouse'});
   assert.equal(value.textContent, '100 bytes/s');
   document.activeElement = null;
   events.focusout({relatedTarget: null});
   assert.equal(value.textContent, '300 bytes/s');
   events.pointermove({clientX: 110, target: {closest: () => null}});
-  events.pointerleave();
+  events['card:pointerleave']({pointerType: 'touch'});
+  assert.equal(commit.textContent, 'Commit · commit1', 'Keep a touch selection after finger lift');
+  assert.equal(events.pointerleave, undefined, 'Keep the selection while reading its comparison titles');
+  events['card:pointerleave']({pointerType: 'mouse'});
   assert.equal(commit.textContent, 'Latest · commit2');
+  assert.equal(baseline.strong.textContent, '+200.0%');
+  assert.equal(previous.strong.textContent, '+50.0%');
+  assert.equal(previous.small.textContent, 'vs previous');
 });
 
 test('result layout measures the table after resize, reopen, and filtering', () => {

@@ -72,3 +72,15 @@
 .timeline-label{transform:translateX(calc(clamp(2px,calc(var(--label-position) - var(--label-offset)),calc(100cqi - var(--label-width) - 2px)) + var(--label-offset)))}
 .timeline-plot a:focus-visible{outline:0}
 .timeline-plot a:focus-visible circle{stroke:var(--ink);stroke-width:3}
+
+/* Keep the selected value and its comparisons together. */
+.timeline-head h3{font-size:14px}
+.timeline-reading{margin-top:12px}
+.timeline-reading [data-point-commit]{font-size:11px}
+.timeline-changes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin-top:8px;font-family:var(--mono)}
+.timeline-changes span{font-size:12px;line-height:1.5;color:var(--green)}
+.timeline-changes strong,.timeline-changes small{display:block;font-size:inherit;font-weight:400}
+.timeline-changes strong{font-size:15px;font-weight:600}
+.timeline-changes small{color:var(--muted)}
+.timeline-plot{margin-top:0}
+.timeline-plot svg{height:170px;height:clamp(170px,60cqi,215px)}

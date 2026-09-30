@@ -563,3 +563,29 @@ All 18 site checks pass. The updated note and 84 chart points fit at 240,
 320, 390, 640, 768, 1024, and 1280 pixels. All eight percentage badges stay
 visible, markers remain separate, value rows fit, and browser error logs
 are clear. Phone and desktop previews show the measured gains and report link.
+
+## Responsive chart height and selected comparisons, 30 September 2026
+
+The 84-point page fits normal horizontal bounds. At 320 px, its plots retain
+a 215 px desktop height while comparison labels shrink to 9 px. The selected
+value follows hover and focus while the percentages describe the latest point.
+
+Plots now use percentage y coordinates and a height that follows their own
+container, from 170 to 215 px. Comparison labels use 12 px text and values use
+15 px text. Both comparisons follow the inspected commit beside its value and
+hash. Their titles name the baseline and previous commits. A pointer can move
+from a point to its comparison title while preserving that selection. Touch-down
+selects a point, and the reading stays visible after finger lift.
+
+At 320 px, the four-card grid changes from 1364 to 1303 px with the larger text.
+All 84 points, native point titles, commit links, and eight comparisons remain.
+Thirty-six rendered states pass in Chromium, Chromium with 24 px minimum text,
+and WebKit. They cover repeated 240, 320, and 1280 px widths, a 240 px results
+container, Memory, CPU/All, expanded results, and first/middle/latest keyboard
+focus. Speed/Metal is exercised after each resize. Glyphs fit both axes,
+marker collisions stay at zero, and page, readout, and table bounds fit.
+
+Real pointer and touch checks pass in both engines. A tap selects a point
+without a drag. The comparison titles retain the selected references, and the
+latest point restores its current comparisons. Browser error logs are clear.
+Ten Python site tests, nine Node regressions, Ruff, and format checks pass.

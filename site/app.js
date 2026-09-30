@@ -54,12 +54,20 @@ function setupTimelineReading(card) {
   const latest = points[points.length - 1];
   const value = card.querySelector('[data-point-value]');
   const commit = card.querySelector('[data-point-commit]');
+  const baseline = card.querySelector('[data-comparison="baseline"]');
+  const previous = card.querySelector('[data-comparison="previous"]');
   const show = point => {
     points.forEach(item => { item.dataset.active = String(item === point); });
     value.textContent = `${point.dataset.value} bytes/s`;
     commit.textContent = `${point === latest ? 'Latest' : 'Commit'} · ${point.dataset.commit}`;
+    baseline.querySelector('strong').textContent = point.dataset.baselineChange;
+    baseline.title = `Baseline ${points[0].dataset.commit}: ${points[0].dataset.value} bytes/s`;
+    const prior = points[points.indexOf(point) - 1];
+    previous.querySelector('strong').textContent = point.dataset.previousChange || '—';
+    previous.querySelector('small').textContent = prior ? 'vs previous' : 'first measurement';
+    previous.title = prior ? `Previous ${prior.dataset.commit}: ${prior.dataset.value} bytes/s` : 'First measured commit';
   };
-  plot.addEventListener('pointermove', event => {
+  const selectPoint = event => {
     const linkedPoint = event.target.closest('svg a');
     if (points.includes(linkedPoint)) {
       show(linkedPoint);
@@ -70,8 +78,13 @@ function setupTimelineReading(card) {
     const nearest = points.reduce((best, point) =>
       Math.abs(Number(point.dataset.position) - position) < Math.abs(Number(best.dataset.position) - position) ? point : best);
     show(nearest);
+  };
+  plot.addEventListener('pointermove', selectPoint);
+  plot.addEventListener('pointerdown', selectPoint);
+  card.addEventListener('pointerleave', event => {
+    // Keep a tapped result readable after the finger lifts.
+    if (event.pointerType !== 'touch') show(points.find(point => point === document.activeElement) || latest);
   });
-  plot.addEventListener('pointerleave', () => show(points.find(point => point === document.activeElement) || latest));
   plot.addEventListener('focusin', event => { if (points.includes(event.target)) show(event.target); });
   plot.addEventListener('focusout', event => { if (!points.includes(event.relatedTarget)) show(latest); });
   show(latest);
