@@ -148,8 +148,11 @@ includes work between log points, including validation and saves.
 The GPT uses learned position embeddings, pre-layer normalization, causal
 attention, GELU feed-forward layers, and tied input/output embeddings. Weights
 and optimizer state use float32. Metal training uses fused kernels for the
-causal softmax and its gradient at context lengths up to 512. MLX handles the
-matrix operations, inference attention, and CPU training. An explicit GELU
+causal softmax and its gradient at context lengths up to 512. Preset training
+shapes combine both attention matrix products with softmax in one kernel.
+The [attention report](benchmarks/README.md#complete-attention-forward-pass)
+records speed, memory, and learning checks. MLX handles the remaining matrix
+operations, inference attention, and CPU training. An explicit GELU
 derivative reduces temporary activation storage in compiled Metal training.
 Native MLX addmm combines residual additions with GPU projections that have
 up to 1024 input features during training. Wider training MLPs use separate

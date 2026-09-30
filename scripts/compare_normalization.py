@@ -25,7 +25,16 @@ from nanogpt_macbook.engine import make_train_step, run_steps, select_device
 from nanogpt_macbook.normalization import LayerNorm
 
 
-def compare(preset, pairs, steps, warmup, component="normalization", reference=None, queued=False):
+def compare(
+    preset,
+    pairs,
+    steps,
+    warmup,
+    component="normalization",
+    reference=None,
+    queued=False,
+    fresh=False,
+):
     config, training = PRESETS[preset]
     records = []
     if component == "clipping":
@@ -41,7 +50,8 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
         target, attribute = LayerNorm, "__call__"
         native, grouped = reference or nn.LayerNorm.__call__, LayerNorm.__call__
     before, after = ("reference", "updated") if reference else ("native", "grouped")
-    for name, implementation in ((before, native), (after, grouped)):
+
+    def setup(implementation):
         with patch.object(target, attribute, implementation):
             mx.random.seed(training.seed)
             rng = np.random.default_rng(training.seed)
@@ -63,24 +73,39 @@ def compare(preset, pairs, steps, warmup, component="normalization", reference=N
             ):
                 pass
             mx.synchronize()
-            records.append((name, train_step, rng))
+            return train_step, rng
+
+    implementations = [(before, native), (after, grouped)]
+    if not fresh:
+        for name, implementation in implementations:
+            records.append((name, *setup(implementation)))
 
     samples = []
     ratios = []
     for pair in range(pairs):
-        order = records if pair % 2 == 0 else list(reversed(records))
+        paths = implementations if fresh else records
+        order = paths if pair % 2 == 0 else list(reversed(paths))
         rates = {}
-        for name, train_step, rng in order:
+        for name, *state in order:
+            if fresh:
+                gc.collect()
+                mx.clear_cache()
+                train_step, rng = setup(state[0])
+                mx.reset_peak_memory()
+            else:
+                train_step, rng = state
             timings = _timed_steps(train_step, rng, config, training, steps, queued)
             rates[name] = training.batch_size * config.context * steps / sum(timings)
-            samples.append(
-                {
-                    "pair": pair + 1,
-                    "path": name,
-                    "step_seconds": timings,
-                    "bytes_per_second": rates[name],
-                }
-            )
+            sample = {
+                "pair": pair + 1,
+                "path": name,
+                "step_seconds": timings,
+                "bytes_per_second": rates[name],
+            }
+            if fresh:
+                sample["peak_memory_mib"] = mx.get_peak_memory() / 1024**2
+                del train_step, rng
+            samples.append(sample)
         ratios.append(rates[after] / rates[before])
         if (pair + 1) % max(1, pairs // 10) == 0 or pair + 1 == pairs:
             median = statistics.median(ratios)
@@ -112,7 +137,10 @@ def main(component="normalization"):
     parser.add_argument("--baseline-ref", help=f"Use {component} from this trusted local Git ref")
     parser.add_argument("--queued", action="store_true", help="Use the two-step GPU queue")
     parser.add_argument(
-        "--memory-gb", type=float, default=4, help="MLX memory/cache budget for both live models"
+        "--fresh", action="store_true", help="Create one fresh model per path in each pair"
+    )
+    parser.add_argument(
+        "--memory-gb", type=float, default=4, help="MLX memory and cache budget in GiB"
     )
     args = parser.parse_args()
     if min(args.pairs, args.steps, args.warmup) < 1:
@@ -150,7 +178,7 @@ def main(component="normalization"):
             "sha256": hashlib.sha256(source).hexdigest(),
             "scope": f"Current training code with {component} from this commit",
         }
-    # Both compiled models stay alive during each comparison.
+    # The ordinary comparison keeps both models; fresh trials keep one at a time.
     select_device("gpu", args.memory_gb)
     operation = "layernorm" if component == "normalization" else component
     receipt = {
@@ -188,11 +216,27 @@ def main(component="normalization"):
                 "through the final device wait in each block"
             ),
         )
+    if args.fresh:
+        receipt["method"].update(
+            name=receipt["method"]["name"].replace("-v1", "-fresh-v1"),
+            model_lifetime="one fresh model per path in each pair",
+            warmup_scope="each fresh model warms up before its timed trial",
+            memory_scope="peak active MLX allocation during each trial after warmup",
+        )
     for preset in PRESETS if args.preset == "all" else [args.preset]:
         gc.collect()
         mx.clear_cache()
         receipt["results"].append(
-            compare(preset, args.pairs, args.steps, args.warmup, component, reference, args.queued)
+            compare(
+                preset,
+                args.pairs,
+                args.steps,
+                args.warmup,
+                component,
+                reference,
+                args.queued,
+                args.fresh,
+            )
         )
         write_json(args.out, receipt)
     print(f"Saved comparison to {args.out}")

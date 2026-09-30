@@ -62,7 +62,7 @@ def test_attention_values_and_gradients_match_mlx(device, compiled, length, widt
         )
 
 
-@pytest.mark.parametrize("length,width", [(33, 16), (256, 32), (512, 48)])
+@pytest.mark.parametrize("length,width", [(33, 16), (128, 32), (256, 32), (512, 48)])
 def test_metal_attention_respects_the_causal_boundary(length, width):
     use_device("gpu")
     boundary = length // 2 + 1
@@ -82,7 +82,7 @@ def test_metal_attention_respects_the_causal_boundary(length, width):
         np.testing.assert_array_equal(np.array(grad[:, :, boundary:]), 0)
 
 
-@pytest.mark.parametrize("length,width", [(33, 16), (256, 32), (512, 48)])
+@pytest.mark.parametrize("length,width", [(33, 16), (128, 32), (256, 32), (512, 48)])
 def test_metal_softmax_is_stable_for_large_scores(length, width):
     use_device("gpu")
     q = mx.full((1, 1, length, width), 100.0)
@@ -92,24 +92,30 @@ def test_metal_softmax_is_stable_for_large_scores(length, width):
     np.testing.assert_allclose(np.array(training_attention(q, k, v)), np.array(expected), atol=1e-6)
 
 
-@pytest.mark.parametrize("length,width", [(256, 32), (288, 40), (480, 64), (512, 48)])
+@pytest.mark.parametrize("length,width", [(128, 32), (256, 32), (288, 40), (480, 64), (512, 48)])
 @pytest.mark.parametrize("scale", [0, 1, 5])
-def test_fused_probabilities_match_float64_and_keep_future_tokens_zero(length, width, scale):
+def test_fused_probabilities_and_values_match_float64(length, width, scale):
     use_device("gpu")
     rng = np.random.default_rng(93)
     q, k = [(rng.normal(size=(2, 3, length, width)) * scale).astype(np.float32) for _ in range(2)]
+    v = rng.normal(size=q.shape).astype(np.float32)
     scores = q.astype(np.float64) @ k.astype(np.float64).swapaxes(-1, -2) / np.sqrt(width)
     causal = np.tri(length, dtype=bool)
     scores = np.where(causal, scores, -np.inf)
     expected = np.exp(scores - scores.max(axis=-1, keepdims=True))
     expected /= expected.sum(axis=-1, keepdims=True)
-    actual = np.array(attention._score_softmax(mx.array(q), mx.array(k)))
+    probabilities, output = attention._score_output(mx.array(q), mx.array(k), mx.array(v))
+    actual = np.array(probabilities)
     np.testing.assert_allclose(actual, expected, atol=5e-6, rtol=5e-5)
     np.testing.assert_allclose(actual.sum(axis=-1), 1, atol=3e-7)
     np.testing.assert_array_equal(actual[..., ~causal], 0)
+    # Check value accumulation with the rounded float32 probabilities. Large
+    # scores amplify the probability rounding already checked above.
+    expected_output = actual.astype(np.float64) @ v.astype(np.float64)
+    np.testing.assert_allclose(np.array(output), expected_output, atol=1e-6, rtol=1e-5)
 
 
-@pytest.mark.parametrize("length,width", [(256, 32), (512, 48)])
+@pytest.mark.parametrize("length,width", [(128, 32), (256, 32), (512, 48)])
 @pytest.mark.parametrize("uniform", [False, True])
 def test_blocked_gradients_match_float64_reference(length, width, uniform):
     use_device("gpu")
@@ -139,7 +145,7 @@ def test_blocked_gradients_match_float64_reference(length, width, uniform):
         np.testing.assert_allclose(np.array(a), e, atol=5e-6, rtol=5e-5)
 
 
-@pytest.mark.parametrize("length,width", [(256, 64), (512, 96)])
+@pytest.mark.parametrize("length,width", [(128, 64), (256, 64), (512, 96)])
 def test_compiled_model_gradients_and_updates_match_mlx(length, width, monkeypatch):
     use_device("gpu")
     config = ModelConfig(context=length, layers=2, heads=2, width=width)
@@ -173,7 +179,8 @@ def test_compiled_model_gradients_and_updates_match_mlx(length, width, monkeypat
 @pytest.mark.parametrize(
     "length,width,value_width,dtype",
     [
-        (128, 32, 32, mx.float32),
+        (96, 32, 32, mx.float32),
+        (160, 32, 32, mx.float32),
         (257, 32, 32, mx.float32),
         (256, 33, 33, mx.float32),
         (256, 72, 72, mx.float32),
@@ -200,7 +207,7 @@ def test_other_shapes_keep_the_general_attention_path(
     )
 
 
-@pytest.mark.parametrize("context,width", [(16, 16), (256, 64)])
+@pytest.mark.parametrize("context,width", [(16, 16), (128, 64), (256, 64)])
 def test_metal_training_resume_with_accumulation(corpus, tmp_path, context, width):
     use_device("gpu")
     model = ModelConfig(context=context, layers=1, heads=2, width=width)
@@ -237,7 +244,7 @@ def test_metal_training_resume_with_accumulation(corpus, tmp_path, context, widt
             )
 
 
-@pytest.mark.parametrize("length,width", [(256, 32), (512, 48)])
+@pytest.mark.parametrize("length,width", [(128, 32), (256, 32), (512, 48)])
 @pytest.mark.parametrize("compiled", [False, True])
 @pytest.mark.parametrize("layout", ["projection", "sliced", "reversed", "broadcast"])
 def test_blocked_attention_handles_input_and_gradient_layouts(length, width, compiled, layout):

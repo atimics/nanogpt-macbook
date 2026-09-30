@@ -95,13 +95,13 @@ def _softmax(head_dim):
 
 
 @lru_cache(maxsize=1)
-def _score_softmax_kernel():
-    # Eight query rows share a score tile. Normalize it in threadgroup memory
-    # so the matrix product and softmax use one kernel and one global output.
+def _score_output_kernel():
+    # Eight query rows share scores and probabilities in threadgroup memory.
+    # Apply the values in the same kernel and save probabilities for backward.
     return mx.fast.metal_kernel(
-        name="nanogpt_attention_score_softmax",
-        input_names=["q", "k"],
-        output_names=["probs"],
+        name="nanogpt_attention_score_output",
+        input_names=["q", "k", "v"],
+        output_names=["probs", "attended"],
         header="#include <metal_simdgroup_matrix>\n",
         source="""
             uint query = threadgroup_position_in_grid.x * 8;
@@ -109,7 +109,7 @@ def _score_softmax_kernel():
             uint simd = simdgroup_index_in_threadgroup;
             uint lane = thread_index_in_simdgroup;
             threadgroup float scores[8 * N];
-            for (uint key = simd * 8; key < N && key <= query + 7; key += 32) {
+            for (uint key = simd * 8; key < N && key <= query + 7; key += S * 8) {
                 simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.f);
                 for (uint d = 0; d < D; d += 8) {
                     simdgroup_float8x8 a, b;
@@ -121,7 +121,7 @@ def _score_softmax_kernel():
                 simdgroup_store(acc, scores + key, N);
             }
             threadgroup_barrier(mem_flags::mem_threadgroup);
-            for (uint row = simd; row < 8; row += 4) {
+            for (uint row = simd; row < 8; row += S) {
                 float values[N / 32];
                 float peak = -INFINITY;
                 for (uint c = 0; c < N / 32; ++c) {
@@ -140,23 +140,45 @@ def _score_softmax_kernel():
                 total = simd_sum(total);
                 for (uint c = 0; c < N / 32; ++c) {
                     uint col = c * 32 + lane;
-                    probs[(head * N + query + row) * N + col] = values[c] / total;
+                    float p = values[c] / total;
+                    probs[(head * N + query + row) * N + col] = p;
+                    scores[row * N + col] = p;
                 }
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint d = simd * 8; d < D; d += S * 8) {
+                simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.f);
+                for (uint key = 0; key <= query + 7; key += 8) {
+                    simdgroup_float8x8 a, b;
+                    simdgroup_load(a, scores + key, N);
+                    simdgroup_load(b, v + (head * N + key) * D + d, D);
+                    simdgroup_multiply_accumulate(acc, a, b, acc);
+                }
+                simdgroup_store(acc,
+                    attended + ((head / H) * N * H + query * H + head % H) * D + d,
+                    H * D);
             }
         """,
     )
 
 
-def _score_softmax(q, k):
+def _score_output(q, k, v):
     length, width = q.shape[-2:]
-    return _score_softmax_kernel()(
-        inputs=[q, k],
-        template=[("N", length), ("D", width)],
-        output_shapes=[(*q.shape[:-1], length)],
-        output_dtypes=[mx.float32],
-        grid=(length // 8 * 128, q.size // (length * width), 1),
-        threadgroup=(128, 1, 1),
-    )[0]
+    threads = 128 if length <= 256 else 256
+    # Longer contexts store values in projection order, so the model's
+    # transpose and reshape can use the same buffer.
+    projection_order = length > 256
+    heads = q.shape[1] if projection_order else 1
+    shape = (q.shape[0], length, q.shape[1], width) if projection_order else q.shape
+    probs, output = _score_output_kernel()(
+        inputs=[q, k, v],
+        template=[("N", length), ("D", width), ("S", threads // 32), ("H", heads)],
+        output_shapes=[(*q.shape[:-1], length), shape],
+        output_dtypes=[mx.float32, mx.float32],
+        grid=(length // 8 * threads, q.size // (length * width), 1),
+        threadgroup=(threads, 1, 1),
+    )
+    return probs, output.transpose(0, 2, 1, 3) if projection_order else output
 
 
 @lru_cache(maxsize=1)
@@ -210,9 +232,7 @@ def _blocked_attention(block_size):
 
     @mx.custom_function
     def apply(q, k, v):
-        mask = _block_mask(q.shape[-2], block_size)
-        probs = _score_softmax(q, k)
-        output = mx.block_masked_mm(probs, v, block_size=block_size, mask_lhs=mask)
+        probs, output = _score_output(q, k, v)
         # Keep probabilities as a private saved value for the gradient.
         return output, probs
 
@@ -257,11 +277,11 @@ def training_attention(q, k, v):
     ):
         length, width = q.shape[-2:]
         # The matrix tiles cover complete rows and groups of eight head values.
-        # Longer preset contexts benefit from the masked matrix products.
+        # Preset contexts benefit from the fused output and masked gradients.
         if (
             q.ndim == 4
             and q.shape == k.shape == v.shape
-            and length >= 256
+            and (length == 128 or length >= 256)
             and length % 32 == 0
             and 32 <= width <= 64
             and width % 8 == 0
@@ -270,7 +290,7 @@ def training_attention(q, k, v):
             # after an internal copy. Pack here so every product uses the same
             # layout, including sliced, reversed, and broadcast inputs.
             q, k, v = (mx.contiguous(item) for item in (q, k, v))
-            return _blocked_attention(32 if length == 256 else 64)(q, k, v)
+            return _blocked_attention(32 if length <= 256 else 64)(q, k, v)
         probabilities = _softmax(q.shape[-1])(q @ k.swapaxes(-1, -2))
         return probabilities @ v
     return mx.fast.scaled_dot_product_attention(q, k, v, scale=q.shape[-1] ** -0.5, mask="causal")

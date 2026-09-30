@@ -479,3 +479,29 @@ text, and WebKit. It covers widths 320–1440 px, a 240 px results container,
 Speed/Memory, CPU/All, and expanded history. Page, plot, readout, and table
 bounds fit, and horizontal scroll remains zero. Browser error logs are clear.
 Nine Node regressions, nine Python site tests, Ruff, and format checks pass.
+
+## Complete attention forward pass, 30 September 2026
+
+Source `1203504` fuses the two attention matrix products with causal softmax
+for preset training shapes. Longer outputs use projection order. All 259
+tests pass on Apple Silicon. Checks cover float64 probability and value
+accumulation references, causality, large scores, gradients, strided and
+broadcast inputs, compiled updates, and training resume. Ruff and formatting
+checks pass.
+
+The [benchmark report](../benchmarks/README.md#complete-attention-forward-pass)
+links the baseline, first fused version, and final standard receipts. It also
+contains 100 paired ten-step blocks and 20 alternating fresh-model trials per
+preset at the same 2 GiB setting. The report retains every measured result and
+the memory cost of each layout.
+
+Five matched learning checks cover tiny, three small seeds, and medium. The
+largest absolute final-loss difference is 0.0268 nats; the largest best-loss
+difference is 0.0002 nats. Every pair chooses the same best checkpoint
+step. All source hashes and comparison summaries were checked from the Git
+files and raw intervals before publication.
+
+The site build contains 84 measured points. All 18 site checks pass. Browser
+checks cover ten widths from 240 to 1280 pixels. Charts fit at every width,
+markers keep their spacing, and value rows stay inside their cards. The
+memory control, CPU filter, and expanded table fit at 320 pixels.
