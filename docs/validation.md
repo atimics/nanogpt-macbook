@@ -610,3 +610,30 @@ ratios, counts, and memory values were audited before publication.
 All 19 site checks pass. The 85-point preview fits at 240, 320, 768, and
 1280 px. All eight comparisons remain readable. Phone Memory/CPU filters
 and expanded results fit their containers, and browser error logs are clear.
+
+## Whole-page bounds under zoom, 30 September 2026
+
+The training plots fit ordinary phone and desktop widths. A CSS zoom fixture
+exposed whole-page overflow around them. At 768 px with `body { zoom: 2 }`,
+content-based minimum widths in the three headline columns expand the page to
+864 px. At 375 px with the same fixture, the learning-loss values keep their
+row together and force the learning chart's grid column out to 468 px.
+
+The headline summary now responds to its own container and stacks its stats
+when space is narrow. Main numeric values stay whole. Grid tracks and children
+can shrink, and learning-loss values wrap as whole items. Header links and
+long headings also wrap within their sections. The reproduced page widths are
+now 768 and 375 px respectively, with the learning chart inside its section.
+
+Ninety rendered states pass in Chromium and WebKit. They cover 240, 320, 375,
+768, and 1280 px widths, CSS zoom at 100%, 125%, and 200%, and SVG text at
+10, 24, and 48 px. This is an explicit CSS zoom fixture. Page and plot bounds
+fit, and visible SVG glyphs stay inside both axes.
+
+A further 36 states cover Chromium, Chromium with 24 px minimum text, and
+WebKit, including a 240 px results container, repeated resize, selected points,
+Memory, CPU/All, and expanded tables. Speed/Metal is exercised after each
+resize. Card, readout, comparison, and learning-grid children stay inside their
+parents. All 85 points and eight signed comparisons remain. Marker collisions
+stay at zero, and browser error logs are clear. Ten Python site tests and
+nine Node regressions pass.
