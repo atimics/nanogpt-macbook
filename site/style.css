@@ -43,3 +43,20 @@
   .stat-value{margin:0;text-align:right}
   .stat-note{grid-column:1/-1}
 }
+
+/* Let each results panel use its own available space. */
+#results{padding-inline:0}
+.results-content{padding-inline:clamp(16px,4cqi,48px)}
+#results .section-title{flex-wrap:wrap;align-items:flex-start}
+#results .section-title>div{min-width:0;flex:1 1 24rem}
+#results .chart-panel{padding-inline:clamp(10px,5cqi,28px)}
+#results .timeline-card{padding-inline:clamp(10px,4cqi,20px)}
+#results .chart-controls button{max-width:100%;min-width:0}
+#results .timeline-heading,#results .chart-heading,#results .note{overflow-wrap:anywhere}
+@container results (max-width:360px){
+  .segmented button,.device-filter button{padding-inline:10px}
+}
+.method-list>div{display:flex;flex-wrap:wrap;gap:5px 15px}
+.method-list dt{flex:0 0 auto;min-width:6rem}
+.method-list dd{flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
+.terminal-bar{flex-wrap:wrap;gap:10px}

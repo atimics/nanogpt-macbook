@@ -29,7 +29,8 @@
     </section>
 
     <section class="section wrap" id="results">
-      <div class="section-title"><div><div class="eyebrow muted">01 / PERFORMANCE</div><h2>Small models. Measured work.</h2></div><a class="text-link" href="./data/benchmarks.json" download>Download all results <span aria-hidden="true">↗</span></a></div>
+      <div class="results-content">
+      <div class="section-title"><div><div class="eyebrow muted">01 / RESULTS</div><h2>Small models. Measured work.</h2></div><a class="text-link" href="./data/benchmarks.json" download>Download all results <span aria-hidden="true">↗</span></a></div>
       <p class="section-intro">Each point measures complete training steps at a source commit. Select a commit hash to inspect its code. One token is one byte.</p>
       <div class="timeline-heading"><h3>Training speed by commit</h3><span>{{COMMIT_COUNT}} measured commits · median bytes/second</span></div>
       <div class="timeline-grid">{{TIMELINE_CARDS}}</div>
@@ -37,7 +38,7 @@
       <p class="note">Queuing two GPU steps gives 25.0% more throughput for tiny, 6.0% for small, and 1.6% for medium in alternating ten-step comparisons. Peak active memory rises by 125 MiB, 547 MiB, and 63 MiB. Use <code>--sync</code> for a lower memory peak. The <a href="https://github.com/atimics/nanogpt-macbook/blob/main/benchmarks/README.md#two-queued-training-steps">training queue report</a> includes raw timings and learning comparisons; small's final losses differ by up to 0.0056 nats across three seeds. Earlier results cover <a href="https://github.com/atimics/nanogpt-macbook/blob/main/benchmarks/README.md#attention-score-gradients">attention</a>, <a href="https://github.com/atimics/nanogpt-macbook/blob/main/benchmarks/README.md#saved-layernorm-statistics">LayerNorm</a>, and <a href="https://github.com/atimics/nanogpt-macbook/blob/main/benchmarks/README.md#gradient-clipping-comparison">gradient clipping</a>.</p>
       <div class="timeline-heading latest-heading"><h3>Latest result</h3><span>Sources {{LATEST_COMMIT}}</span></div>
       <div class="chart-panel">
-        <div class="chart-controls"><div class="segmented" role="group" aria-label="Chart metric"><button type="button" data-metric="speed" aria-pressed="true">Throughput</button><button type="button" data-metric="memory" aria-pressed="false">Memory</button></div><div class="device-filter" role="group" aria-label="Device filter"><button type="button" data-device="all" aria-pressed="true">All</button><button type="button" data-device="gpu" aria-pressed="false">Metal GPU</button><button type="button" data-device="cpu" aria-pressed="false">CPU</button></div></div>
+        <div class="chart-controls"><div class="segmented" role="group" aria-label="Chart metric"><button type="button" data-metric="speed" aria-pressed="true">Speed</button><button type="button" data-metric="memory" aria-pressed="false">Memory</button></div><div class="device-filter" role="group" aria-label="Device filter"><button type="button" data-device="all" aria-pressed="true">All</button><button type="button" data-device="gpu" aria-pressed="false">Metal GPU</button><button type="button" data-device="cpu" aria-pressed="false">CPU</button></div></div>
         <div class="chart-heading"><h3 id="chart-title">Byte tokens per second</h3><span id="chart-direction">HIGHER IS FASTER</span></div>
         <div class="bar-chart" id="speed-chart" aria-label="Measured training throughput">{{SPEED_BARS}}</div>
         <div class="bar-chart" id="memory-chart" aria-label="Peak MLX memory" hidden>{{MEMORY_BARS}}</div>
@@ -45,6 +46,7 @@
       </div>
       <details class="results-details"><summary>All measured results and settings</summary><div class="table-scroll" data-layout="cards" role="region" aria-label="Detailed benchmark results"><table><caption>All measured commits and model settings</caption><thead><tr><th scope="col">Preset / device</th><th scope="col">Source commit</th><th scope="col">Parameters</th><th scope="col">Context × batch</th><th scope="col">Bytes / second</th><th scope="col">Step time</th><th scope="col">Peak MLX</th><th scope="col">Receipt</th></tr></thead><tbody>{{TABLE_ROWS}}</tbody></table></div></details>
       <p class="note">{{SCOPE_NOTE}} Memory is peak active MLX allocation. macOS and other apps use additional memory. Synthetic byte data makes the workload repeatable.</p>
+      </div>
     </section>
 
     <section class="learning-section" id="learning"><div class="wrap learning-grid"><div><div class="eyebrow muted">02 / LEARNING CHECK</div><h2>It learns, too.</h2><p>The tiny model trained on the bundled story for 300 steps. Held-out prediction loss fell as training progressed.</p><div class="loss-stat"><span>{{FIRST_LOSS}}</span><span class="loss-arrow" aria-hidden="true">→</span><strong>{{LAST_LOSS}}</strong></div><p class="note">Cross entropy in nats · lower is better</p><p class="learning-scope">A 4,544-byte story with a 455-byte validation split. This checks the training path; broader data and longer runs shape text quality.</p><a class="text-link" href="./data/demo-learning.json" download>Read the learning receipt <span aria-hidden="true">↗</span></a></div><div class="loss-chart">{{LOSS_CHART}}<div class="chart-foot"><span>tiny · 837,888 parameters</span><span>Metal GPU / float32</span></div></div></div></section>
