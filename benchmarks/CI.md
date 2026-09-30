@@ -68,3 +68,35 @@ A dedicated Apple Silicon Mac is another option. Give it a separate runner
 label, use one job at a time, and keep other GPU work idle during measurements.
 Its access and host setup should be agreed before adding that runner to this
 public repository.
+
+## First controlled result: medium training
+
+[Run 36748450305](https://github.com/cenetex/nanogpt-macbook/actions/runs/36748450305)
+finished on September 30, 2026 in 10 minutes. It used `macos-26`, image
+`20260907.0351.1`, macOS 26.6.2, Python 3.12.10, MLX 0.32.3, and NumPy 2.5.3.
+The GPU was an Apple Paravirtual device with 7 GiB exposed memory.
+
+| Comparison | Median paired change | Pair range | Candidate faster |
+| --- | ---: | ---: | ---: |
+| Same baseline twice (A/A) | +0.04% | -2.74% to +3.66% | 3 of 6 |
+| Packed AdamW vs baseline (A/B) | +2.07% | +1.50% to +19.06% | 6 of 6 |
+
+The gain is promising, but it lies within the same-commit variation. The first
+A/B pair also has a large timing outlier. More runs are needed to establish a
+small speed gain. These measurements support using the runner for remote tests;
+a dedicated quiet Mac remains useful for resolving changes below a few percent.
+
+| Source commit | Median throughput in A/B | Peak active MLX memory |
+| --- | ---: | ---: |
+| [`2c7f63f`](https://github.com/cenetex/nanogpt-macbook/commit/2c7f63f1fc615e4fab7a525faaa1831724752a06) | 11,475 bytes/s | 1,719.868 MiB |
+| [`07b11a7`](https://github.com/cenetex/nanogpt-macbook/commit/07b11a7b9a8f0bcc883583776178809faca3190e) | 11,722 bytes/s | 1,719.911 MiB |
+
+This host shows essentially equal peak memory for the two versions. Memory
+savings measured on the M4 Max depend on that host and its software stack.
+The paired speed change uses the median of the six per-pair ratios, so it can
+differ from the ratio of the two median rates above.
+
+All [24 raw samples](ci/36748450305/) are preserved with their source hashes.
+The [comparison receipt](ci/36748450305/comparison.json) includes the host,
+run order, per-sample file hashes, and all paired ratios. The harness commit is
+`925df18710f14b7132e67e28dc3a2b54d9e1cbd6`.
